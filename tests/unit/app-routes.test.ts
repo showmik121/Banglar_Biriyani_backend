@@ -27,11 +27,43 @@ describe("API routes that need no database", () => {
   })
 
   test("protected routes reject requests without a session", async () => {
-    for (const url of ["/api/orders/my-orders", "/api/auth/me"]) {
+    for (const url of [
+      "/api/orders/my-orders",
+      "/api/auth/me",
+      "/api/admin/orders",
+      "/api/admin/offers",
+      "/api/admin/delivery-zones",
+    ]) {
       const res = await app.request(url)
       expect(res.status).toBe(401)
       const body = (await res.json()) as { data?: any; error?: any }
       expect(body.error.code).toBe("UNAUTHORIZED")
     }
+  })
+
+  test("admin write routes also reject anonymous requests", async () => {
+    const attempts: [string, string][] = [
+      ["POST", "/api/admin/offers"],
+      ["PATCH", "/api/admin/offers/1"],
+      ["DELETE", "/api/admin/offers/1"],
+      ["POST", "/api/admin/delivery-zones"],
+      ["PATCH", "/api/admin/menu/1"],
+      ["PATCH", "/api/admin/orders/1/status"],
+    ]
+    for (const [method, url] of attempts) {
+      const res = await app.request(url, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      expect(res.status, `${method} ${url}`).toBe(401)
+    }
+  })
+
+  test("a forged session token is rejected", async () => {
+    const res = await app.request("/api/admin/offers", {
+      headers: { authorization: "Bearer not-a-real-token" },
+    })
+    expect(res.status).toBe(401)
   })
 })

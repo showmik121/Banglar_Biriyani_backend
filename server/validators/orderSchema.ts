@@ -90,6 +90,11 @@ export const createOrderSchema = z
         error: "paymentMethod must be COD, BKASH, or NAGAD",
       })
       .default("COD"),
+    deliveryZoneId: z.number().int().positive().nullable().optional(),
+    offerCode: z
+      .union([z.string(), z.null(), z.undefined()])
+      .transform((val) => (val ? val.trim().toUpperCase().replace(/\s+/g, "") || null : null))
+      .optional(),
     paymentTrxId: z
       .union([z.string(), z.null(), z.undefined()])
       .transform((val) => {

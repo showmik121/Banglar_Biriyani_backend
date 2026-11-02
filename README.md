@@ -35,3 +35,35 @@ for the [frontend](https://github.com/showmik121/Banglar_Biriyani_frontend).
    Neon-এ একটা আলাদা *test branch* বানিয়ে তার connection string দিন, আসল ডাটাবেস নয়,
    কারণ এই টেস্ট ডাটাবেসের ডেটা মুছে নতুন করে বসায়।
    Repository → Settings → Secrets and variables → Actions → New repository secret → নাম `TEST_DATABASE_URL`।
+
+## Admin panel
+
+Open `/admin` on the website and sign in with an ADMIN or STAFF account.
+
+| পাতা | কী করা যায় | কে পারে |
+| --- | --- | --- |
+| Live Orders | অর্ডার দেখা, স্ট্যাটাস বদলানো (Confirmed → Preparing → Out for delivery → Delivered), bKash/Nagad পেমেন্ট যাচাই | ADMIN, STAFF |
+| Menu & Dishes | খাবার যোগ, ছবি ও দাম বদলানো, চালু/বন্ধ | ADMIN (যোগ/মুছা), STAFF (এডিট) |
+| Offers | প্রোমো কোড (যেমন DIU10), % বা ৳ ছাড়, সর্বনিম্ন অর্ডার, শুরু/শেষ তারিখ | ADMIN (STAFF শুধু দেখে) |
+| Delivery Points | ডেলিভারি এলাকা, প্রতিটার ফি আর সময় | ADMIN (STAFF শুধু দেখে) |
+| Customers & Staff | কাউকে STAFF/ADMIN বানানো বা বন্ধ করা | ADMIN |
+
+নিরাপত্তা: পাসওয়ার্ড bcrypt দিয়ে hash করা, login session HttpOnly cookie-তে, ৫ বার ভুল পাসওয়ার্ডে ১৫ মিনিট বন্ধ,
+প্রতিটা admin API-তে role যাচাই, আর প্রতিটা পরিবর্তন `audit_logs` টেবিলে লেখা থাকে।
+দাম, ছাড় আর ডেলিভারি ফি সবসময় server-এ হিসাব হয়, browser থেকে বদলানো যায় না।
+
+### নতুন টেবিল যোগ করা (একবার)
+
+এই আপডেটে `offers` আর `delivery_zones` টেবিল যোগ হয়েছে। ডাটাবেসে বসাতে:
+
+```bash
+npm run db:push
+```
+
+নমুনা ডেলিভারি পয়েন্ট আর DIU10 অফারসহ সব নতুন করে বসাতে চাইলে (পুরোনো ডেটা মুছে যাবে):
+
+```bash
+npm run db:seed
+```
+
+Live-এ যাওয়ার আগে `.env`-এ `SEED_ADMIN_PASSWORD` দিয়ে শক্ত admin পাসওয়ার্ড সেট করুন।

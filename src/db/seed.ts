@@ -7,6 +7,8 @@ import {
   dailyMenuSchedules,
   orderItems,
   orders,
+  offers,
+  deliveryZones,
   type dayOfWeekEnum,
 } from "./schema"
 import { sql } from "drizzle-orm"
@@ -24,13 +26,20 @@ async function seed() {
     // 1. Clean existing data in reverse order of foreign keys
     console.log("🧹 Cleaning existing tables...")
     await db.execute(sql`
-      TRUNCATE TABLE audit_logs, sessions, order_items, orders, daily_menu_schedules, menu_items, categories, users RESTART IDENTITY CASCADE;
+      TRUNCATE TABLE audit_logs, sessions, order_items, orders, daily_menu_schedules, menu_items, categories, offers, delivery_zones, users RESTART IDENTITY CASCADE;
     `)
 
     // 2. Seed Authenticated Users (RBAC) idempotently with bcryptjs (cost 12)
     console.log("👤 Seeding authenticated accounts (Admin, Kitchen Staff, Customer)...")
-    const adminPasswordHash = await bcrypt.hash("Admin@1234", 12)
-    const staffPasswordHash = await bcrypt.hash("Staff@1234", 12)
+    // Set SEED_ADMIN_PASSWORD / SEED_STAFF_PASSWORD in .env for a real launch.
+    // The demo passwords below are only for local testing.
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || "Admin@1234"
+    const staffPassword = process.env.SEED_STAFF_PASSWORD || "Staff@1234"
+    if (!process.env.SEED_ADMIN_PASSWORD) {
+      console.warn("⚠️  Using the demo admin password. Set SEED_ADMIN_PASSWORD before going live.")
+    }
+    const adminPasswordHash = await bcrypt.hash(adminPassword, 12)
+    const staffPasswordHash = await bcrypt.hash(staffPassword, 12)
     const customerPasswordHash = await bcrypt.hash("Customer@1234", 12)
 
     const testUsersData = [
@@ -632,6 +641,25 @@ async function seed() {
       })
       console.log("🛡️ Initial audit log entry registered.")
     }
+
+    // Delivery points around Daffodil Smart City and a starter offer
+    await db.insert(deliveryZones).values([
+      { name: "Daffodil Smart City", area: "Campus & hostels", feeBdt: 30, etaMinutes: "15-20", sortOrder: 1 },
+      { name: "Khagan", area: "Student mess area", feeBdt: 40, etaMinutes: "15-20", sortOrder: 2 },
+      { name: "Birulia", area: "Bazar & around", feeBdt: 50, etaMinutes: "20-25", sortOrder: 3 },
+      { name: "Ashulia", area: "Zirabo, Baipail", feeBdt: 70, etaMinutes: "30-40", sortOrder: 4 },
+      { name: "Savar", area: "Nabinagar, Savar Bazar", feeBdt: 80, etaMinutes: "35-45", sortOrder: 5 },
+    ])
+    await db.insert(offers).values({
+      code: "DIU10",
+      title: "10% off for DIU students",
+      description: "Use code DIU10 on orders above ৳300. Up to ৳100 off.",
+      discountType: "PERCENT",
+      discountValue: 10,
+      maxDiscountBdt: 100,
+      minOrderBdt: 300,
+    })
+    console.log("🛵 Seeded delivery points and a starter offer.")
 
     console.log(
       `🎉 Successfully seeded Banglar Biriyani database! Order #${sampleOrder.orderNumber} linked to User #${sampleOrder.userId || "Guest"}.`,

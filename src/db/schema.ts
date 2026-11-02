@@ -154,6 +154,49 @@ export const dailyMenuSchedules = pgTable(
 )
 
 // ==========================================
+// 3b. Offers & Delivery Points
+// ==========================================
+
+export const discountTypeEnum = pgEnum("discount_type", ["PERCENT", "FLAT"])
+
+// Promo offers managed from the admin panel (e.g. DIU20 = 20% off)
+export const offers = pgTable(
+  "offers",
+  {
+    id: serial("id").primaryKey(),
+    code: text("code").notNull().unique(), // upper-case promo code customers type at checkout
+    title: text("title").notNull(),
+    description: text("description").default("").notNull(),
+    discountType: discountTypeEnum("discount_type").default("PERCENT").notNull(),
+    discountValue: integer("discount_value").notNull(), // percent (1-100) or whole BDT
+    maxDiscountBdt: integer("max_discount_bdt"), // cap for percent offers
+    minOrderBdt: integer("min_order_bdt").default(0).notNull(),
+    startsAt: timestamp("starts_at"),
+    endsAt: timestamp("ends_at"),
+    isActive: boolean("is_active").default(true).notNull(),
+    showOnHomepage: boolean("show_on_homepage").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("offers_active_idx").on(table.isActive)],
+)
+
+// Delivery points / zones with their own fee and estimated time
+export const deliveryZones = pgTable(
+  "delivery_zones",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(), // e.g. "Daffodil Smart City"
+    area: text("area").default("").notNull(), // e.g. "Campus & hostels"
+    feeBdt: integer("fee_bdt").default(40).notNull(),
+    etaMinutes: text("eta_minutes").default("20-30").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("delivery_zones_active_idx").on(table.isActive, table.sortOrder)],
+)
+
+// ==========================================
 // 4. Orders & Order Items Tables
 // ==========================================
 
@@ -174,6 +217,11 @@ export const orders = pgTable(
     paymentMethod: paymentMethodEnum("payment_method").default("COD").notNull(),
     subtotalBdt: integer("subtotal_bdt").notNull(),
     deliveryFeeBdt: integer("delivery_fee_bdt").default(60).notNull(),
+    deliveryZoneId: integer("delivery_zone_id").references(() => deliveryZones.id, {
+      onDelete: "set null",
+    }),
+    offerCode: text("offer_code"),
+    discountBdt: integer("discount_bdt").default(0).notNull(),
     totalBdt: integer("total_bdt").notNull(),
     status: orderStatusEnum("status").default("PENDING").notNull(),
     paymentTrxId: text("payment_trx_id"),
@@ -292,3 +340,6 @@ export type Order = typeof orders.$inferSelect
 export type NewOrder = typeof orders.$inferInsert
 export type OrderItem = typeof orderItems.$inferSelect
 export type NewOrderItem = typeof orderItems.$inferInsert
+
+export type Offer = typeof offers.$inferSelect
+export type DeliveryZone = typeof deliveryZones.$inferSelect

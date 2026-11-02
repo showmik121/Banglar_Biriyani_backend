@@ -6,6 +6,7 @@ import { menuRouter } from "./routes/menu.js"
 import { ordersRouter } from "./routes/orders.js"
 import { authRouter } from "./routes/auth.js"
 import { adminRouter } from "./routes/admin.js"
+import { adminPromotionsRouter, publicPromotionsRouter } from "./routes/promotions.js"
 
 export const app = new Hono()
 
@@ -37,6 +38,8 @@ app.route("/api/auth", authRouter)
 app.route("/api/menu", menuRouter)
 app.route("/api/orders", ordersRouter)
 app.route("/api/admin", adminRouter)
+app.route("/api/admin", adminPromotionsRouter)
+app.route("/api", publicPromotionsRouter)
 
 // Standardized 404 Handler following api-design standards
 app.notFound((c) => {

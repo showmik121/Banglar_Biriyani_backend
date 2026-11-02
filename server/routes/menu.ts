@@ -78,7 +78,7 @@ export async function getMenuItemsForDay(day: ValidDay) {
     })
     .from(menuItems)
     .innerJoin(categories, eq(menuItems.categoryId, categories.id))
-    .where(and(eq(menuItems.isEveryday, true), eq(menuItems.isAvailable, true)))
+    .where(eq(menuItems.isAvailable, true)) // every available dish is on the menu every day
     .orderBy(categories.sortOrder, menuItems.id)
 
   // Combine items without duplicate IDs

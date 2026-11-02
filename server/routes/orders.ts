@@ -1,6 +1,15 @@
 import { Hono } from "hono"
 import { eq, and, inArray, sql } from "drizzle-orm"
-import { db, menuItems, dailyMenuSchedules, orders, orderItems } from "../../src/db/index.js"
+import {
+  db,
+  menuItems,
+  dailyMenuSchedules,
+  orders,
+  orderItems,
+  offers,
+  deliveryZones,
+} from "../../src/db/index.js"
+import { DEFAULT_DELIVERY_FEE_BDT, computeTotal, evaluateOffer } from "../utils/pricing.js"
 import { createOrderSchema } from "../validators/orderSchema.js"
 import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
@@ -159,9 +168,39 @@ ordersRouter.post(
           }
         }
 
-        // Standard delivery fee across Dhaka
-        const deliveryFeeBdt = 60
-        const totalBdt = subtotalBdt + deliveryFeeBdt
+        // Delivery fee comes from the chosen delivery point (server-side, never from the client)
+        let deliveryFeeBdt = DEFAULT_DELIVERY_FEE_BDT
+        let deliveryZoneId: number | null = null
+        if (data.deliveryZoneId) {
+          const [zone] = await tx
+            .select()
+            .from(deliveryZones)
+            .where(eq(deliveryZones.id, data.deliveryZoneId))
+            .limit(1)
+          if (!zone || !zone.isActive) {
+            throw new Error("ZONE_UNAVAILABLE: We do not deliver to this point right now")
+          }
+          deliveryFeeBdt = zone.feeBdt
+          deliveryZoneId = zone.id
+        }
+
+        // Promo code discount, re-checked on the server
+        let discountBdt = 0
+        let offerCode: string | null = null
+        if (data.offerCode) {
+          const [offer] = await tx
+            .select()
+            .from(offers)
+            .where(eq(offers.code, data.offerCode))
+            .limit(1)
+          if (!offer) throw new Error("OFFER_INVALID: This promo code does not exist")
+          const check = evaluateOffer(offer, subtotalBdt)
+          if (!check.ok) throw new Error(`OFFER_INVALID: ${check.message}`)
+          discountBdt = check.discountBdt
+          offerCode = offer.code
+        }
+
+        const totalBdt = computeTotal(subtotalBdt, discountBdt, deliveryFeeBdt)
         // Insert master order record with collision retry
         const authenticatedUser = c.get("user")
         let orderRecord: any
@@ -181,6 +220,9 @@ ordersRouter.post(
                 paymentMethod: data.paymentMethod,
                 subtotalBdt,
                 deliveryFeeBdt,
+                deliveryZoneId,
+                offerCode,
+                discountBdt,
                 totalBdt,
                 status: "PENDING",
                 paymentTrxId: data.paymentTrxId || null,
@@ -271,7 +313,9 @@ ordersRouter.post(
 
       if (
         errorMessage.startsWith("ITEM_UNAVAILABLE") ||
-        errorMessage.startsWith("ITEM_NOT_SCHEDULED")
+        errorMessage.startsWith("ITEM_NOT_SCHEDULED") ||
+        errorMessage.startsWith("ZONE_UNAVAILABLE") ||
+        errorMessage.startsWith("OFFER_INVALID")
       ) {
         const [code, ...msgParts] = errorMessage.split(": ")
         return c.json(
