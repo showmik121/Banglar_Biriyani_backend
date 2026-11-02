@@ -2,7 +2,8 @@ import { z } from "zod"
 import { normalizeOfferCode } from "../utils/pricing.js"
 
 const optionalDate = z
-  .union([z.string(), z.null(), z.undefined()])
+  .string()
+  .nullish()
   .transform((v, ctx) => {
     if (!v) return null
     const d = new Date(v)
