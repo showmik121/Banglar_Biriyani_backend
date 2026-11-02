@@ -1,6 +1,6 @@
 // Bundles the API into one file that Supabase Edge Functions (Deno) can run.
 // Usage: node edge/build.mjs
-import { builtinModules } from "node:module"
+import { builtinModules, createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
@@ -26,13 +26,21 @@ function report(message) {
   console.error(message)
 }
 
-let build
-try {
-  ;({ build } = await import("esbuild"))
-} catch (err) {
-  report(`Could not load esbuild: ${err?.message || err}`)
+// esbuild is already installed as part of tsx / drizzle-kit (no extra package needed).
+function loadEsbuild() {
+  const errors = []
+  for (const host of [null, "tsx", "drizzle-kit"]) {
+    const from = host ? path.join(root, "node_modules", host, "package.json") : path.join(root, "package.json")
+    try {
+      return createRequire(from)("esbuild")
+    } catch (err) {
+      errors.push(`${host || "project"}: ${err?.message?.split("\n")[0]}`)
+    }
+  }
+  report(`Could not find esbuild. ${errors.join(" | ")}`)
   process.exit(1)
 }
+const { build } = loadEsbuild()
 
 const result = await build({
   entryPoints: [path.join(root, "edge/entry.ts")],
