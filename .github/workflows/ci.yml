@@ -85,7 +85,6 @@ jobs:
       # Placeholder values: these checks never touch the database.
       DATABASE_URL: postgres://ci:ci@localhost:5432/ci
       JWT_SECRET: ci-only-jwt-secret
-      NODE_ENV: production
     steps:
       - uses: actions/checkout@v4
 
@@ -105,4 +104,7 @@ jobs:
           deno-version: v2.x
 
       - name: Run the bundle in Deno
+        # Production mode only here; npm ci above needs dev packages (esbuild).
+        env:
+          NODE_ENV: production
         run: deno run -A edge/smoke-test.mjs
