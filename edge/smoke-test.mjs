@@ -1,6 +1,18 @@
 // Runs the built Supabase bundle in Deno and checks a few routes that need no database.
 // Usage (after `node edge/build.mjs`): deno run -A edge/smoke-test.mjs
-const { default: app } = await import("../supabase/functions/api/app.bundle.js")
+const inCI = Deno.env.get("GITHUB_ACTIONS")
+const report = (msg) => {
+  if (inCI) console.log(`::error title=Edge smoke test::${String(msg).replace(/\r?\n/g, "%0A")}`)
+  console.error(msg)
+}
+
+let app
+try {
+  app = (await import("../supabase/functions/api/app.bundle.js")).default
+} catch (err) {
+  report(`Bundle failed to load in Deno: ${err?.stack || err}`)
+  Deno.exit(1)
+}
 
 const checks = [
   ["/api/health", 200],
@@ -11,9 +23,19 @@ const checks = [
 
 let failed = 0
 for (const [path, expected] of checks) {
-  const res = await app.fetch(new Request(`https://edge.test${path}`))
+  let res
+  try {
+    res = await app.fetch(new Request(`https://edge.test${path}`))
+  } catch (err) {
+    report(`${path} threw: ${err?.stack || err}`)
+    failed++
+    continue
+  }
   const ok = res.status === expected
-  if (!ok) failed++
+  if (!ok) {
+    failed++
+    report(`${path} -> ${res.status}, expected ${expected}: ${(await res.text()).slice(0, 300)}`)
+  }
   console.log(`${ok ? "PASS" : "FAIL"}  ${path}  -> ${res.status} (expected ${expected})`)
 }
 

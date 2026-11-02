@@ -1,6 +1,5 @@
 // Bundles the API into one file that Supabase Edge Functions (Deno) can run.
 // Usage: node edge/build.mjs
-import { build } from "esbuild"
 import { builtinModules } from "node:module"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
@@ -20,7 +19,22 @@ const nodePrefix = {
   },
 }
 
-await build({
+// In GitHub Actions, show build errors as annotations on the run page.
+function report(message) {
+  const text = String(message).replace(/%/g, "%25").replace(/\r?\n/g, "%0A")
+  if (process.env.GITHUB_ACTIONS) console.log(`::error title=Edge build::${text}`)
+  console.error(message)
+}
+
+let build
+try {
+  ;({ build } = await import("esbuild"))
+} catch (err) {
+  report(`Could not load esbuild: ${err?.message || err}`)
+  process.exit(1)
+}
+
+const result = await build({
   entryPoints: [path.join(root, "edge/entry.ts")],
   outfile: path.join(root, "supabase/functions/api/app.bundle.js"),
   bundle: true,
@@ -43,6 +57,14 @@ await build({
     ].join(""),
   },
   logLevel: "info",
+}).catch((err) => {
+  const list = err?.errors?.length ? err.errors : [{ text: err?.message || String(err) }]
+  for (const e of list.slice(0, 10)) {
+    const where = e.location ? ` (${e.location.file}:${e.location.line})` : ""
+    report(`${e.text}${where}`)
+  }
+  process.exit(1)
 })
+void result
 
 console.log("Built supabase/functions/api/app.bundle.js")
