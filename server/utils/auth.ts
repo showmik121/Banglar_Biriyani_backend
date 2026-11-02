@@ -83,7 +83,7 @@ export async function verifySessionToken(token: string): Promise<JwtSessionPaylo
  * Set the bb_session cookie on Hono context (HttpOnly, SameSite=Lax, Path=/, Secure in prod over HTTPS, 7-day max-age)
  */
 export function setSessionCookie(c: Context, token: string) {
-  const isHttps = c.req.url.startsWith("https://")
+  const isHttps = c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https"
   const isProd = process.env.NODE_ENV === "production"
   const secure = isProd && isHttps
 
@@ -100,7 +100,7 @@ export function setSessionCookie(c: Context, token: string) {
  * Clear the bb_session cookie on Hono context
  */
 export function clearSessionCookie(c: Context) {
-  const isHttps = c.req.url.startsWith("https://")
+  const isHttps = c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https"
   const isProd = process.env.NODE_ENV === "production"
   const secure = isProd && isHttps
 

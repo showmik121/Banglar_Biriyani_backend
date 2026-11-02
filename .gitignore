@@ -22,3 +22,8 @@ Thumbs.db
 .vscode/
 .idea/
 verify-log.txt
+
+# Supabase: generated bundle and CLI cache
+supabase/functions/api/app.bundle.js
+supabase/.temp/
+supabase/.branches/

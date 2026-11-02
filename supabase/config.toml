@@ -1,0 +1,7 @@
+# Supabase CLI settings for this repo (only what the API function needs).
+project_id = "banglar-biriyani-backend"
+
+[functions.api]
+# The API does its own login check (bb_session cookie), so Supabase's
+# built-in JWT check is turned off for this function.
+verify_jwt = false
