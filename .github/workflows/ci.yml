@@ -1,12 +1,19 @@
-# Runs automatically on every push and pull request.
+# Runs automatically on every push (any branch) and every pull request.
+# You can also start it by hand: Actions tab -> CI -> "Run workflow".
 # See the result in the "Actions" tab of the GitHub repository.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch cancels the older, still-running check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -33,8 +40,8 @@ jobs:
     name: Integration tests (Neon test database)
     runs-on: ubuntu-latest
     needs: test
-    # Only on pushes to main, never on pull requests from forks, so secrets stay private.
-    if: github.event_name == 'push'
+    # On pushes and manual runs only, never on pull requests from forks, so secrets stay private.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     env:
       # Add these under Settings -> Secrets and variables -> Actions.
       # Point them at a separate Neon *test branch*, not your live database.
