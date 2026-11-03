@@ -155,7 +155,7 @@ jobs:
           PROJECT_REF="$(tr -d '[:space:]' < supabase-project-id.txt)"
           supabase --version
           set +e
-          supabase functions deploy api --project-ref "$PROJECT_REF" --no-verify-jwt --use-api 2>&1 | tee deploy.log
+          supabase functions deploy api --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --yes 2>&1 | tee deploy.log
           status=${PIPESTATUS[0]}
           set -e
           if [ "$status" -ne 0 ]; then
