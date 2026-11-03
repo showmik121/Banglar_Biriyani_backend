@@ -1,7 +1,8 @@
 import { describe, test, expect } from "vitest"
-import { computeTotal, evaluateOffer, normalizeOfferCode, type OfferRule } from "../../server/utils/pricing.js"
+import { DELIVERY_FEE_BDT, computeTotal, evaluateOffer, normalizeOfferCode, type OfferRule } from "../../server/utils/pricing.js"
 import {
   deliveryZoneInputSchema,
+  deliveryZoneUpdateSchema,
   offerInputSchema,
   validateOfferSchema,
 } from "../../server/validators/promotionSchema.js"
@@ -52,6 +53,10 @@ describe("evaluateOffer", () => {
 })
 
 describe("computeTotal", () => {
+  test("delivery is free", () => {
+    expect(DELIVERY_FEE_BDT).toBe(0)
+    expect(computeTotal(450, 45, DELIVERY_FEE_BDT)).toBe(405)
+  })
   test("subtotal minus discount plus delivery fee", () => {
     expect(computeTotal(800, 80, 30)).toBe(750)
   })
@@ -89,9 +94,14 @@ describe("promo code input", () => {
 })
 
 describe("delivery point input", () => {
-  test("accepts a normal delivery point", () => {
-    const r = deliveryZoneInputSchema.safeParse({ name: "Khagan", feeBdt: 40, etaMinutes: "15-20" })
+  test("accepts a normal delivery point; delivery is free by default", () => {
+    const r = deliveryZoneInputSchema.safeParse({ name: "Khagan", etaMinutes: "15-20" })
     expect(r.success).toBe(true)
+    if (r.success) expect(r.data.feeBdt).toBe(0)
+  })
+
+  test("pausing a point changes only isActive", () => {
+    expect(deliveryZoneUpdateSchema.parse({ isActive: false })).toEqual({ isActive: false })
   })
 
   test("rejects negative fees and odd time formats", () => {

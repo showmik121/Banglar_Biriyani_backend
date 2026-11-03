@@ -644,11 +644,11 @@ async function seed() {
 
     // Delivery points around Daffodil Smart City and a starter offer
     await db.insert(deliveryZones).values([
-      { name: "Daffodil Smart City", area: "Campus & hostels", feeBdt: 30, etaMinutes: "15-20", sortOrder: 1 },
-      { name: "Khagan", area: "Student mess area", feeBdt: 40, etaMinutes: "15-20", sortOrder: 2 },
-      { name: "Birulia", area: "Bazar & around", feeBdt: 50, etaMinutes: "20-25", sortOrder: 3 },
-      { name: "Ashulia", area: "Zirabo, Baipail", feeBdt: 70, etaMinutes: "30-40", sortOrder: 4 },
-      { name: "Savar", area: "Nabinagar, Savar Bazar", feeBdt: 80, etaMinutes: "35-45", sortOrder: 5 },
+      { name: "Daffodil Smart City", area: "Campus & hostels", etaMinutes: "15-20", sortOrder: 1 },
+      { name: "Khagan", area: "Student mess area", etaMinutes: "15-20", sortOrder: 2 },
+      { name: "Birulia", area: "Bazar & around", etaMinutes: "20-25", sortOrder: 3 },
+      { name: "Ashulia", area: "Zirabo, Baipail", etaMinutes: "30-40", sortOrder: 4 },
+      { name: "Savar", area: "Nabinagar, Savar Bazar", etaMinutes: "35-45", sortOrder: 5 },
     ])
     await db.insert(offers).values({
       code: "DIU10",

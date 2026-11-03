@@ -10,9 +10,13 @@ if not exist .env (
   exit /b 1
 )
 
-echo.
-echo Supabase Dashboard -^> your project -^> Project Settings -^> General -^> "Project ID"
-set /p PROJECT_REF=Paste your Supabase Project ID here:
+rem The Project ID is saved in supabase-project-id.txt (not a secret).
+set PROJECT_REF=
+if exist supabase-project-id.txt set /p PROJECT_REF=<supabase-project-id.txt
+if "%PROJECT_REF%"=="" (
+  echo Supabase Dashboard -^> your project -^> Project Settings -^> General -^> "Project ID"
+  set /p PROJECT_REF=Paste your Supabase Project ID here: 
+)
 if "%PROJECT_REF%"=="" (
   echo No Project ID given.
   pause
@@ -30,20 +34,26 @@ call node edge/build.mjs
 if errorlevel 1 goto fail
 
 echo.
-echo [3/5] Signing in to Supabase (a browser window may open)...
-call npx --yes supabase login
-if errorlevel 1 goto fail
+echo [3/5] Signing in to Supabase. Press Enter if asked, then click Authorize in the browser...
+rem Already signed in? Then skip the browser login.
+call npx --yes supabase projects list >nul 2>nul
+if errorlevel 1 (
+  call npx --yes supabase login
+  if errorlevel 1 goto fail
+) else (
+  echo Already signed in.
+)
 
 echo.
 echo [4/5] Copying secrets from .env to Supabase (values are not shown)...
-call npx --yes supabase secrets set --env-file .env --project-ref %PROJECT_REF%
+call npx --yes supabase secrets set --env-file .env --project-ref %PROJECT_REF% --yes
 if errorlevel 1 goto fail
-call npx --yes supabase secrets set NODE_ENV=production --project-ref %PROJECT_REF%
+call npx --yes supabase secrets set NODE_ENV=production --project-ref %PROJECT_REF% --yes
 if errorlevel 1 goto fail
 
 echo.
 echo [5/5] Deploying the "api" function...
-call npx --yes supabase functions deploy api --project-ref %PROJECT_REF% --no-verify-jwt --use-api
+call npx --yes supabase functions deploy api --project-ref %PROJECT_REF% --no-verify-jwt --use-api --yes
 if errorlevel 1 goto fail
 
 set API_URL=https://%PROJECT_REF%.supabase.co/functions/v1/api

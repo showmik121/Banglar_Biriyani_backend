@@ -56,11 +56,19 @@ const result = await build({
     "dotenv/config": path.join(root, "edge/shims/empty.ts"),
   },
   plugins: [nodePrefix],
-  // Some packages call require() or read process.env; give them Deno's Node versions.
+  // Supabase's runtime has no Node globals (Buffer, process, setImmediate...),
+  // but packages like the Postgres driver expect them. Provide them here.
   banner: {
     js: [
       'import { createRequire as __bbCreateRequire } from "node:module";',
       'import process from "node:process";',
+      'import { Buffer as __bbBuffer } from "node:buffer";',
+      'import { setImmediate as __bbSetImmediate, clearImmediate as __bbClearImmediate } from "node:timers";',
+      "globalThis.Buffer ??= __bbBuffer;",
+      "globalThis.global ??= globalThis;",
+      "globalThis.process ??= process;",
+      "globalThis.setImmediate ??= __bbSetImmediate;",
+      "globalThis.clearImmediate ??= __bbClearImmediate;",
       "const require = __bbCreateRequire(import.meta.url);",
     ].join(""),
   },

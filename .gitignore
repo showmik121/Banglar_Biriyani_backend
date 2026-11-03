@@ -27,3 +27,10 @@ verify-log.txt
 supabase/functions/api/app.bundle.js
 supabase/.temp/
 supabase/.branches/
+
+# Temporary file used to create .env (contains secrets)
+env-ready.txt
+
+# Local helper files that are not part of the project (may contain secrets)
+create-env.bat
+scripts/create-env.mjs

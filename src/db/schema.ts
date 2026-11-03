@@ -187,7 +187,7 @@ export const deliveryZones = pgTable(
     id: serial("id").primaryKey(),
     name: text("name").notNull(), // e.g. "Daffodil Smart City"
     area: text("area").default("").notNull(), // e.g. "Campus & hostels"
-    feeBdt: integer("fee_bdt").default(40).notNull(),
+    feeBdt: integer("fee_bdt").default(0).notNull(), // delivery is free; column kept for old data
     etaMinutes: text("eta_minutes").default("20-30").notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     sortOrder: integer("sort_order").default(0).notNull(),
@@ -216,7 +216,7 @@ export const orders = pgTable(
     deliverySlot: text("delivery_slot").default("ASAP (45-60 mins)").notNull(),
     paymentMethod: paymentMethodEnum("payment_method").default("COD").notNull(),
     subtotalBdt: integer("subtotal_bdt").notNull(),
-    deliveryFeeBdt: integer("delivery_fee_bdt").default(60).notNull(),
+    deliveryFeeBdt: integer("delivery_fee_bdt").default(0).notNull(),
     deliveryZoneId: integer("delivery_zone_id").references(() => deliveryZones.id, {
       onDelete: "set null",
     }),

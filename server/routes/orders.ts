@@ -9,7 +9,7 @@ import {
   offers,
   deliveryZones,
 } from "../../src/db/index.js"
-import { DEFAULT_DELIVERY_FEE_BDT, computeTotal, evaluateOffer } from "../utils/pricing.js"
+import { DELIVERY_FEE_BDT, computeTotal, evaluateOffer } from "../utils/pricing.js"
 import { createOrderSchema } from "../validators/orderSchema.js"
 import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
@@ -168,8 +168,8 @@ ordersRouter.post(
           }
         }
 
-        // Delivery fee comes from the chosen delivery point (server-side, never from the client)
-        let deliveryFeeBdt = DEFAULT_DELIVERY_FEE_BDT
+        // Delivery is free; the delivery point only tells the rider where to go.
+        const deliveryFeeBdt = DELIVERY_FEE_BDT
         let deliveryZoneId: number | null = null
         if (data.deliveryZoneId) {
           const [zone] = await tx
@@ -180,7 +180,6 @@ ordersRouter.post(
           if (!zone || !zone.isActive) {
             throw new Error("ZONE_UNAVAILABLE: We do not deliver to this point right now")
           }
-          deliveryFeeBdt = zone.feeBdt
           deliveryZoneId = zone.id
         }
 

@@ -2,7 +2,7 @@
 title Banglar Biriyani - API server
 cd /d "%~dp0"
 if not exist .env (
-  echo No .env file found. Copy .env.example to .env and fill in your Neon DATABASE_URL first.
+  echo No .env file found. Copy .env.example to .env and fill in your Supabase DATABASE_URL first.
   pause
   exit /b 1
 )

@@ -89,14 +89,13 @@ publicPromotionsRouter.post("/offers/validate", async (c) => {
   })
 })
 
-/** GET /api/delivery-zones — active delivery points with fee and time */
+/** GET /api/delivery-zones — active delivery points with their delivery time (delivery is free) */
 publicPromotionsRouter.get("/delivery-zones", async (c) => {
   const rows = await db
     .select({
       id: deliveryZones.id,
       name: deliveryZones.name,
       area: deliveryZones.area,
-      feeBdt: deliveryZones.feeBdt,
       etaMinutes: deliveryZones.etaMinutes,
     })
     .from(deliveryZones)

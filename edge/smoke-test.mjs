@@ -6,6 +6,14 @@ const report = (msg) => {
   console.error(msg)
 }
 
+// Supabase's runtime has none of Node's globals; remove them so this test
+// catches code that relies on them (this is what broke the first deploy).
+for (const name of ["Buffer", "global", "process", "setImmediate", "clearImmediate"]) {
+  delete globalThis[name]
+}
+// ...and it does define window, like a browser would.
+globalThis.window ??= globalThis
+
 let app
 try {
   app = (await import("../supabase/functions/api/app.bundle.js")).default

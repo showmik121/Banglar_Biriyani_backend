@@ -18,8 +18,8 @@ export type OfferCheck =
   | { ok: true; discountBdt: number }
   | { ok: false; reason: "INACTIVE" | "NOT_STARTED" | "EXPIRED" | "MIN_ORDER"; message: string }
 
-/** Default fee when no delivery point is chosen (kept for older clients). */
-export const DEFAULT_DELIVERY_FEE_BDT = 60
+/** Delivery is free for every order and every delivery point. */
+export const DELIVERY_FEE_BDT = 0
 
 export function normalizeOfferCode(code: string): string {
   return code.trim().toUpperCase().replace(/\s+/g, "")

@@ -20,6 +20,7 @@ describe("repository safety", () => {
     for (const key of ["DATABASE_URL", "JWT_SECRET", "API_PORT"]) {
       expect(example).toMatch(new RegExp(`^${key}=`, "m"))
     }
-    expect(example).toContain("user:password@ep-example")
+    expect(example).toContain("[YOUR-PASSWORD]")
+    expect(example).not.toMatch(/postgres(ql)?:\/\/[^\s]*:(?!\[YOUR-PASSWORD\])[^@\s]+@/)
   })
 })

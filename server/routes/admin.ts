@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { eq, and, or, inArray, sql, desc, ilike } from "drizzle-orm"
+import { eq, and, or, inArray, sql, desc, asc, ilike } from "drizzle-orm"
 import {
   db,
   users,
@@ -48,102 +48,44 @@ const ALL_DAYS: (typeof dayOfWeekEnum.enumValues)[number][] = [
 ]
 
 // =========================================================================
-// 1. GET /api/admin/stats (ADMIN, STAFF)
+// 1. GET /api/admin/stats (ADMIN, STAFF) - quick summary for the dashboard
+// Orders and revenue for today, this month and all time, in Bangladesh time.
+// Revenue counts every order except cancelled ones.
 // =========================================================================
 adminRouter.get("/stats", requireRole(["ADMIN", "STAFF"]), async (c) => {
   try {
-    // 1. Overall Revenue & Orders
-    const [revStats] = await db
+    // created_at is stored as UTC; convert it to Dhaka local time for "today" and "this month"
+    const local = sql`((${orders.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Dhaka')`
+    const todayLocal = sql`(now() AT TIME ZONE 'Asia/Dhaka')`
+    const isToday = sql`${local}::date = ${todayLocal}::date`
+    const isThisMonth = sql`date_trunc('month', ${local}) = date_trunc('month', ${todayLocal})`
+    const notCancelled = sql`${orders.status} <> 'CANCELLED'`
+
+    const [row] = await db
       .select({
-        totalRevenueBdt: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} != 'CANCELLED' THEN ${orders.totalBdt} ELSE 0 END), 0)::int`,
-        todayRevenueBdt: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} != 'CANCELLED' AND ${orders.createdAt}::date = CURRENT_DATE THEN ${orders.totalBdt} ELSE 0 END), 0)::int`,
-        totalOrders: sql<number>`COUNT(*)::int`,
+        todayOrders: sql<number>`COUNT(*) FILTER (WHERE ${isToday} AND ${notCancelled})::int`,
+        todayRevenueBdt: sql<number>`COALESCE(SUM(${orders.totalBdt}) FILTER (WHERE ${isToday} AND ${notCancelled}), 0)::int`,
+        monthOrders: sql<number>`COUNT(*) FILTER (WHERE ${isThisMonth} AND ${notCancelled})::int`,
+        monthRevenueBdt: sql<number>`COALESCE(SUM(${orders.totalBdt}) FILTER (WHERE ${isThisMonth} AND ${notCancelled}), 0)::int`,
+        totalOrders: sql<number>`COUNT(*) FILTER (WHERE ${notCancelled})::int`,
+        totalRevenueBdt: sql<number>`COALESCE(SUM(${orders.totalBdt}) FILTER (WHERE ${notCancelled}), 0)::int`,
+        activeOrders: sql<number>`COUNT(*) FILTER (WHERE ${orders.status} IN ('PENDING','CONFIRMED','PREPARING','OUT_FOR_DELIVERY'))::int`,
       })
       .from(orders)
 
-    // 2. Order counts by status
-    const statusRows = await db
-      .select({
-        status: orders.status,
-        count: sql<number>`COUNT(*)::int`,
-      })
-      .from(orders)
-      .groupBy(orders.status)
-
-    const orderCountsByStatus: Record<string, number> = {
-      PENDING: 0,
-      CONFIRMED: 0,
-      PREPARING: 0,
-      OUT_FOR_DELIVERY: 0,
-      DELIVERED: 0,
-      CANCELLED: 0,
-    }
-    for (const row of statusRows) {
-      orderCountsByStatus[row.status] = Number(row.count)
-    }
-
-    // 3. Revenue & Order Breakdown by Day of Week
-    const dayRows = await db
-      .select({
-        day: orders.scheduledDay,
-        orderCount: sql<number>`COUNT(*)::int`,
-        revenueBdt: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} != 'CANCELLED' THEN ${orders.totalBdt} ELSE 0 END), 0)::int`,
-      })
-      .from(orders)
-      .groupBy(orders.scheduledDay)
-
-    const dayMap = new Map(dayRows.map((r) => [r.day, r]))
-    const revenueByDayOfWeek = ALL_DAYS.map((day) => ({
-      day,
-      orderCount: Number(dayMap.get(day)?.orderCount || 0),
-      revenueBdt: Number(dayMap.get(day)?.revenueBdt || 0),
-    }))
-
-    // 4. Total Customers Count
-    const [customerCount] = await db
-      .select({ count: sql<number>`COUNT(*)::int` })
-      .from(users)
-      .where(eq(users.role, "CUSTOMER"))
-
-    // 5. Recent 10 Orders
-    const recentOrders = await db
-      .select({
-        id: orders.id,
-        orderNumber: orders.orderNumber,
-        customerName: orders.customerName,
-        customerPhone: orders.customerPhone,
-        customerAddress: orders.customerAddress,
-        scheduledDay: orders.scheduledDay,
-        totalBdt: orders.totalBdt,
-        status: orders.status,
-        paymentMethod: orders.paymentMethod,
-        createdAt: orders.createdAt,
-      })
-      .from(orders)
-      .orderBy(desc(orders.createdAt))
-      .limit(10)
-
+    const n = (v: unknown) => Number(v || 0)
     return c.json({
       data: {
-        totalRevenueBdt: Number(revStats?.totalRevenueBdt || 0),
-        todayRevenueBdt: Number(revStats?.todayRevenueBdt || 0),
-        totalOrders: Number(revStats?.totalOrders || 0),
-        totalCustomers: Number(customerCount?.count || 0),
-        orderCountsByStatus,
-        revenueByDayOfWeek,
-        recentOrders,
+        today: { orders: n(row?.todayOrders), revenueBdt: n(row?.todayRevenueBdt) },
+        month: { orders: n(row?.monthOrders), revenueBdt: n(row?.monthRevenueBdt) },
+        allTime: { orders: n(row?.totalOrders), revenueBdt: n(row?.totalRevenueBdt) },
+        activeOrders: n(row?.activeOrders),
       },
     })
   } catch (error) {
     console.error("Admin stats error:", error)
     return c.json(
-      {
-        error: {
-          code: "STATS_ERROR",
-          message: "Failed to aggregate admin statistics",
-          details: error instanceof Error ? error.message : String(error),
-        },
-      },
+      { error: { code: "STATS_ERROR", message: "Could not load the summary", details: null } },
       500,
     )
   }
@@ -379,6 +321,38 @@ adminRouter.put("/schedule/:day", requireRole(["ADMIN", "STAFF"]), async (c) => 
 // =========================================================================
 
 // POST /api/admin/menu - Create a new menu item
+/**
+ * GET /api/admin/menu
+ * Every dish (available or not) with its category, plus the category list.
+ */
+adminRouter.get("/menu", requireRole(["ADMIN", "STAFF"]), async (c) => {
+  try {
+    const cats = await db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .orderBy(asc(categories.sortOrder), asc(categories.id))
+    const items = await db
+      .select({
+        id: menuItems.id,
+        categoryId: menuItems.categoryId,
+        name: menuItems.name,
+        description: menuItems.description,
+        basePriceBdt: menuItems.basePriceBdt,
+        imageUrl: menuItems.imageUrl,
+        isAvailable: menuItems.isAvailable,
+      })
+      .from(menuItems)
+      .orderBy(asc(menuItems.categoryId), asc(menuItems.name))
+    return c.json({ data: { items, categories: cats } })
+  } catch (error) {
+    console.error("Admin menu list error:", error)
+    return c.json(
+      { error: { code: "MENU_FETCH_FAILED", message: "Failed to load the menu", details: null } },
+      500,
+    )
+  }
+})
+
 adminRouter.post("/menu", requireRole(["ADMIN"]), async (c) => {
   const rawBody = await c.req.json().catch(() => null)
   if (!rawBody) {

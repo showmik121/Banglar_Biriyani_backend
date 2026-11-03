@@ -68,7 +68,8 @@ export const offerUpdateSchema = z
 export const deliveryZoneInputSchema = z.object({
   name: z.string().trim().min(2, "Name is required").max(80),
   area: z.string().trim().max(120).default(""),
-  feeBdt: z.number().int().min(0, "Fee cannot be negative").max(1000),
+  // Delivery is free; kept so old data stays valid.
+  feeBdt: z.number().int().min(0, "Fee cannot be negative").max(1000).default(0),
   etaMinutes: z
     .string()
     .trim()
@@ -78,8 +79,20 @@ export const deliveryZoneInputSchema = z.object({
   sortOrder: z.number().int().min(0).default(0),
 })
 
-export const deliveryZoneUpdateSchema = deliveryZoneInputSchema
-  .partial()
+// PATCH: no defaults here, so fields that are not sent are left unchanged
+// (with .partial() Zod would fill in defaults and wipe them).
+export const deliveryZoneUpdateSchema = z
+  .object({
+    name: z.string().trim().min(2, "Name is required").max(80).optional(),
+    area: z.string().trim().max(120).optional(),
+    etaMinutes: z
+      .string()
+      .trim()
+      .regex(/^\d{1,3}(-\d{1,3})?$/, "Use minutes like 20 or 20-30")
+      .optional(),
+    isActive: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+  })
   .refine((o) => Object.keys(o).length > 0, "Nothing to update")
 
 export const validateOfferSchema = z.object({

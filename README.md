@@ -72,6 +72,13 @@ Live-এ যাওয়ার আগে `.env`-এ `SEED_ADMIN_PASSWORD` দি
 
 The API runs as one Supabase Edge Function named `api`. The database stays on Neon.
 
+**Automatic:** every push to `main` runs the tests and, when they pass, deploys the API to
+Supabase (the `deploy` job in `.github/workflows/ci.yml`). It needs the repository secret
+`SUPABASE_ACCESS_TOKEN` (a Supabase access token scoped to Edge Functions of this project).
+`deploy-supabase.bat` still works for a manual deploy.
+
+**First-time / manual setup:**
+
 1. Create a free project at supabase.com and copy its **Project ID** (Project Settings → General).
 2. Double-click `deploy-supabase.bat`. It builds the API (`node edge/build.mjs`), signs you in,
    copies the secrets from `.env` to Supabase, sets `NODE_ENV=production`, and deploys.

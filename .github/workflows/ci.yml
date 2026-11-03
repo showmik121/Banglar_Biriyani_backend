@@ -108,3 +108,62 @@ jobs:
         env:
           NODE_ENV: production
         run: deno run -A edge/smoke-test.mjs
+
+  deploy:
+    name: Deploy API to Supabase
+    runs-on: ubuntu-latest
+    # Only after the tests and the Edge build pass, and only for pushes to main.
+    needs: [test, supabase-edge]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A newer push waits for this deploy instead of cancelling it halfway.
+    concurrency:
+      group: deploy-supabase
+      cancel-in-progress: false
+    env:
+      # Scoped token (Edge Functions only). Add it under Settings -> Secrets and variables -> Actions.
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - name: Skip notice
+        if: env.SUPABASE_ACCESS_TOKEN == ''
+        run: echo "SUPABASE_ACCESS_TOKEN secret is not set, so the automatic deploy is skipped."
+
+      - uses: actions/checkout@v4
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+
+      - uses: actions/setup-node@v4
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: npm ci
+
+      - name: Build the Edge Function bundle
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: node edge/build.mjs
+
+      - uses: supabase/setup-cli@v1
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        with:
+          version: latest
+
+      - name: Deploy the "api" function
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: |
+          PROJECT_REF="$(tr -d '[:space:]' < supabase-project-id.txt)"
+          supabase functions deploy api --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+
+      - name: Check the live API
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: |
+          PROJECT_REF="$(tr -d '[:space:]' < supabase-project-id.txt)"
+          for i in 1 2 3 4 5; do
+            BODY="$(curl -s "https://$PROJECT_REF.supabase.co/functions/v1/api/health" || true)"
+            echo "$BODY"
+            echo "$BODY" | grep -q '"status":"ok"' && exit 0
+            sleep 5
+          done
+          echo "::error title=Deploy check::The live API did not answer /health with status ok"
+          exit 1
