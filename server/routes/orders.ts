@@ -14,6 +14,7 @@ import { createOrderSchema } from "../validators/orderSchema.js"
 import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
 import { samePhone } from "../utils/phone.js"
+import { sendOrderEmail } from "../utils/email.js"
 
 export const ordersRouter = new Hono()
 
@@ -269,6 +270,17 @@ ordersRouter.post(
           order: orderRecord,
           items: insertedLineItems,
         }
+      })
+
+      // Confirmation email for signed-in customers (never blocks or fails the order)
+      const buyer = c.get("user")
+      await sendOrderEmail(buyer?.email, "PLACED", {
+        orderNumber: result.order.orderNumber,
+        customerName: result.order.customerName,
+        customerAddress: result.order.customerAddress,
+        totalBdt: result.order.totalBdt,
+        paymentMethod: result.order.paymentMethod,
+        items: result.items.map((i: any) => ({ name: i.itemNameSnapshot, quantity: i.quantity, lineTotalBdt: i.lineTotalBdt })),
       })
 
       c.header("Location", `/api/orders/${result.order.orderNumber}`)

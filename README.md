@@ -92,3 +92,17 @@ How it fits together:
 - CI builds the bundle and runs it in Deno on every push (`edge/smoke-test.mjs`).
 - Login rate limiting is kept in memory per function instance, so it is weaker on Supabase
   than on a single always-on server.
+
+## অর্ডার আপডেট ইমেইল (Brevo, ফ্রি — দিনে ৩০০টা)
+
+যে কাস্টমার সাইন-ইন করে অর্ডার দেন, তিনি ইমেইল পান: অর্ডার পাওয়া গেছে, Confirmed, On the way, Delivered, Cancelled।
+
+1. brevo.com-এ ফ্রি অ্যাকাউন্ট খুলুন।
+2. Senders, Domains & Dedicated IPs → Senders → আপনার Gmail যোগ করে verify করুন।
+3. SMTP & API → API Keys → নতুন key বানান।
+4. Supabase → Edge Functions → Secrets-এ দুটো secret যোগ করুন:
+   - `BREVO_API_KEY` = Brevo-র key
+   - `EMAIL_FROM` = verify করা Gmail ঠিকানা
+5. ব্যস। নতুন deploy লাগবে না; secret সেভ হলেই কাজ শুরু।
+
+key কখনো git-এ বা চ্যাটে দেবেন না। secret না থাকলে ইমেইল চুপচাপ বন্ধ থাকে, অর্ডারে কোনো সমস্যা হয় না।

@@ -14,6 +14,7 @@ import {
   type paymentMethodEnum,
 } from "../../src/db/index.js"
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js"
+import { EMAIL_STATUSES, sendOrderEmail, type OrderEmailKind } from "../utils/email.js"
 import {
   dayOfWeekEnumSchema,
   updateOrderStatusSchema,
@@ -899,6 +900,27 @@ adminRouter.patch("/orders/:id/status", requireRole(["ADMIN", "STAFF"]), async (
         notes: data.notes || null,
       }),
     })
+
+    // Tell the customer by email when the status really changed
+    if (existingOrder.status !== data.status && EMAIL_STATUSES.has(data.status) && updatedOrder.userId) {
+      try {
+        const [owner] = await db.select({ email: users.email }).from(users).where(eq(users.id, updatedOrder.userId)).limit(1)
+        const items = await db
+          .select({ name: orderItems.itemNameSnapshot, quantity: orderItems.quantity, lineTotalBdt: orderItems.lineTotalBdt })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, updatedOrder.id))
+        await sendOrderEmail(owner?.email, data.status as OrderEmailKind, {
+          orderNumber: updatedOrder.orderNumber,
+          customerName: updatedOrder.customerName,
+          customerAddress: updatedOrder.customerAddress,
+          totalBdt: updatedOrder.totalBdt,
+          paymentMethod: updatedOrder.paymentMethod,
+          items,
+        })
+      } catch (emailErr) {
+        console.error("[email] status email skipped:", emailErr)
+      }
+    }
 
     return c.json({
       data: {
