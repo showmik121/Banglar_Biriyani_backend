@@ -146,18 +146,14 @@ jobs:
         if: env.SUPABASE_ACCESS_TOKEN != ''
         run: node edge/build.mjs
 
-      - uses: supabase/setup-cli@v1
-        if: env.SUPABASE_ACCESS_TOKEN != ''
-        with:
-          version: latest
-
       - name: Deploy the "api" function
         if: env.SUPABASE_ACCESS_TOKEN != ''
         run: |
           PROJECT_REF="$(tr -d '[:space:]' < supabase-project-id.txt)"
-          supabase --version
+          # The CLI comes from npm (looking up "latest" on GitHub can hit its rate limit)
+          npx --yes supabase@2 --version
           set +e
-          supabase functions deploy api --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --yes 2>&1 | tee deploy.log
+          npx --yes supabase@2 functions deploy api --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --yes 2>&1 | tee deploy.log
           status=${PIPESTATUS[0]}
           set -e
           if [ "$status" -ne 0 ]; then
