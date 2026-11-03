@@ -153,7 +153,16 @@ jobs:
         if: env.SUPABASE_ACCESS_TOKEN != ''
         run: |
           PROJECT_REF="$(tr -d '[:space:]' < supabase-project-id.txt)"
-          supabase functions deploy api --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+          supabase --version
+          set +e
+          supabase functions deploy api --project-ref "$PROJECT_REF" --no-verify-jwt --use-api 2>&1 | tee deploy.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # Show the reason on the public run page (the full log needs sign-in)
+            echo "::error title=Supabase deploy::$(tail -c 900 deploy.log | tr '\r\n' '  ')"
+            exit "$status"
+          fi
 
       - name: Check the live API
         if: env.SUPABASE_ACCESS_TOKEN != ''
