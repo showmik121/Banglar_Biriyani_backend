@@ -1,17 +1,18 @@
 import { z } from "zod"
 import { BD_PHONE_REGEX, normalizeBdPhone } from "../utils/auth.js"
 
-// Sign-up needs only name, mobile number and password. Email is optional.
+// Sign-up: name, mobile number, email (for order updates) and password.
 export const signupSchema = z.object({
   fullName: z
     .string({ error: "Enter your name" })
     .trim()
     .min(2, "Enter your name")
     .max(100, "Name is too long"),
-  email: z.preprocess(
-    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
-    z.string().trim().toLowerCase().email("Enter a valid email address").nullable().optional(),
-  ),
+  email: z
+    .string({ error: "Enter your email" })
+    .trim()
+    .toLowerCase()
+    .email("Enter a valid email address"),
   phone: z
     .string({ error: "Phone number is required" })
     .trim()
