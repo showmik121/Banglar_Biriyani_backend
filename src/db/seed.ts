@@ -40,6 +40,8 @@ async function seed() {
     }
     const adminPasswordHash = await bcrypt.hash(adminPassword, 12)
     const staffPasswordHash = await bcrypt.hash(staffPassword, 12)
+    // Demo customer + demo order exist only for automated tests (SEED_DEMO_DATA=true).
+    const withDemo = process.env.SEED_DEMO_DATA === "true"
     const customerPasswordHash = await bcrypt.hash("Customer@1234", 12)
 
     const testUsersData = [
@@ -74,7 +76,7 @@ async function seed() {
 
     const insertedUsers = await db
       .insert(users)
-      .values(testUsersData)
+      .values(withDemo ? testUsersData : testUsersData.filter((u) => u.role !== "CUSTOMER"))
       .onConflictDoUpdate({
         target: users.email,
         set: {
@@ -578,53 +580,56 @@ async function seed() {
       `✅ Seeded ${schedulesToInsert.length} daily schedule assignments across all 7 days with soldCount tracking.`,
     )
 
-    // 5. Create a sample initial order to verify order schema works
-    console.log("📝 Seeding a demonstration order...")
-    const muttonKacchiId = itemMap.get("mutton-kacchi")!
-    const borhaniId = itemMap.get("borhani")!
-
-    const customerUser = userMap.get("customer@banglarbiriyani.com")
     const adminUser = userMap.get("admin@banglarbiriyani.com")
 
-    const [sampleOrder] = await db
-      .insert(orders)
-      .values({
-        orderNumber: "BB-20261028-001",
-        userId: customerUser?.id ?? null,
-        customerName: customerUser?.fullName || "Tanvir Ahmed",
-        customerPhone: customerUser?.phone || "01711000003",
-        customerAddress: customerUser?.defaultAddress || "House 14, Road 7, Dhanmondi, Dhaka",
-        scheduledDay: "SATURDAY",
-        deliverySlot: "Lunch (1:00 PM - 2:00 PM)",
-        paymentMethod: "BKASH",
-        subtotalBdt: 530,
-        deliveryFeeBdt: 60,
-        totalBdt: 590,
-        status: "CONFIRMED",
-        notes: "Please bring extra salad and mint borhani chilled.",
-      })
-      .returning()
+    if (withDemo) {
+      // 5. Create a sample initial order to verify order schema works
+      console.log("📝 Seeding a demonstration order...")
+      const muttonKacchiId = itemMap.get("mutton-kacchi")!
+      const borhaniId = itemMap.get("borhani")!
 
-    await db.insert(orderItems).values([
-      {
-        orderId: sampleOrder.id,
-        menuItemId: muttonKacchiId,
-        scheduledDay: "SATURDAY",
-        itemNameSnapshot: "Saturday Special Shahi Mutton Kacchi",
-        quantity: 1,
-        unitPriceBdt: 450,
-        lineTotalBdt: 450,
-      },
-      {
-        orderId: sampleOrder.id,
-        menuItemId: borhaniId,
-        scheduledDay: "SATURDAY",
-        itemNameSnapshot: "Shahi Borhani (500ml)",
-        quantity: 1,
-        unitPriceBdt: 80,
-        lineTotalBdt: 80,
-      },
-    ])
+      const customerUser = userMap.get("customer@banglarbiriyani.com")
+
+      const [sampleOrder] = await db
+        .insert(orders)
+        .values({
+          orderNumber: "BB-20261028-001",
+          userId: customerUser?.id ?? null,
+          customerName: customerUser?.fullName || "Tanvir Ahmed",
+          customerPhone: customerUser?.phone || "01711000003",
+          customerAddress: customerUser?.defaultAddress || "House 14, Road 7, Dhanmondi, Dhaka",
+          scheduledDay: "SATURDAY",
+          deliverySlot: "Lunch (1:00 PM - 2:00 PM)",
+          paymentMethod: "BKASH",
+          subtotalBdt: 530,
+          deliveryFeeBdt: 60,
+          totalBdt: 590,
+          status: "CONFIRMED",
+          notes: "Please bring extra salad and mint borhani chilled.",
+        })
+        .returning()
+
+      await db.insert(orderItems).values([
+        {
+          orderId: sampleOrder.id,
+          menuItemId: muttonKacchiId,
+          scheduledDay: "SATURDAY",
+          itemNameSnapshot: "Saturday Special Shahi Mutton Kacchi",
+          quantity: 1,
+          unitPriceBdt: 450,
+          lineTotalBdt: 450,
+        },
+        {
+          orderId: sampleOrder.id,
+          menuItemId: borhaniId,
+          scheduledDay: "SATURDAY",
+          itemNameSnapshot: "Shahi Borhani (500ml)",
+          quantity: 1,
+          unitPriceBdt: 80,
+          lineTotalBdt: 80,
+        },
+      ])
+    }
 
     // 6. Record audit log for database seed
     if (adminUser) {
@@ -662,7 +667,7 @@ async function seed() {
     console.log("🛵 Seeded delivery points and a starter offer.")
 
     console.log(
-      `🎉 Successfully seeded Banglar Biriyani database! Order #${sampleOrder.orderNumber} linked to User #${sampleOrder.userId || "Guest"}.`,
+      `🎉 Successfully seeded Banglar Biriyani database${withDemo ? " (with demo customer and order)" : ""}.`,
     )
   } catch (error) {
     console.error("❌ Error seeding database:", error)
