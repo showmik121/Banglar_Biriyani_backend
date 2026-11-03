@@ -118,23 +118,27 @@ authRouter.post("/signup", async (c) => {
 
     const data = parseResult.data
     const normalizedPhone = normalizeBdPhone(data.phone)
-    const normalizedEmail = data.email.trim().toLowerCase()
+    const normalizedEmail = data.email ? data.email.trim().toLowerCase() : null
 
-    // Check for duplicate email (case-insensitive) or phone number
+    // Check for a duplicate phone number, or email (case-insensitive) when one was given
     const existingUsers = await db
       .select({ id: users.id, email: users.email, phone: users.phone })
       .from(users)
-      .where(or(ilike(users.email, normalizedEmail), eq(users.phone, normalizedPhone)))
+      .where(
+        normalizedEmail
+          ? or(ilike(users.email, normalizedEmail), eq(users.phone, normalizedPhone))
+          : eq(users.phone, normalizedPhone),
+      )
       .limit(1)
 
     if (existingUsers.length > 0) {
       const match = existingUsers[0]
-      const field = match.email.toLowerCase() === normalizedEmail ? "email address" : "phone number"
+      const field = match.phone === normalizedPhone ? "mobile number" : "email address"
       return c.json(
         {
           error: {
             code: "CONFLICT",
-            message: `A user with this ${field} already exists`,
+            message: `An account with this ${field} already exists. Please sign in instead.`,
             details: null,
           },
         },

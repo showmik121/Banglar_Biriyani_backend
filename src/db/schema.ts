@@ -47,7 +47,7 @@ export const users = pgTable(
   {
     id: serial("id").primaryKey(),
     fullName: text("full_name").notNull(),
-    email: text("email").notNull().unique(),
+    email: text("email").unique(), // optional: customers sign up with name, mobile and password
     phone: text("phone").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     role: userRoleEnum("role").default("CUSTOMER").notNull(),

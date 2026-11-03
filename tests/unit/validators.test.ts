@@ -23,6 +23,13 @@ describe("signupSchema", () => {
     expect(result.phone).toBe("01811000000")
   })
 
+  test("only name, mobile number and password are needed; email is optional", () => {
+    const r = signupSchema.safeParse({ fullName: "Karim", phone: "01811000000", password: "strongpass1" })
+    expect(r.success).toBe(true)
+    const blank = signupSchema.parse({ fullName: "Karim", email: "  ", phone: "01811000000", password: "strongpass1" })
+    expect(blank.email).toBeNull()
+  })
+
   test("rejects a short password", () => {
     const r = signupSchema.safeParse({
       fullName: "Karim",

@@ -16,6 +16,7 @@
     "test:integration": "vitest run tests/integration",
     "test:watch": "vitest tests/unit",
     "db:push": "drizzle-kit push",
+    "db:upgrade": "tsx src/db/upgrade.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:remove-demo": "tsx src/db/remove-demo-data.ts"
   },
