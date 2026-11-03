@@ -30,8 +30,8 @@ async function seed() {
     `)
 
     // 2. Seed Authenticated Users (RBAC) idempotently with bcryptjs (cost 12)
-    console.log("👤 Seeding authenticated accounts (Admin, Kitchen Staff, Customer)...")
-    // Set SEED_ADMIN_PASSWORD / SEED_STAFF_PASSWORD in .env for a real launch.
+    console.log("👤 Seeding the admin account...")
+    // Set SEED_ADMIN_PASSWORD in .env for a real launch.
     // The demo passwords below are only for local testing.
     const adminPassword = process.env.SEED_ADMIN_PASSWORD || "Admin@1234"
     const staffPassword = process.env.SEED_STAFF_PASSWORD || "Staff@1234"
@@ -40,7 +40,8 @@ async function seed() {
     }
     const adminPasswordHash = await bcrypt.hash(adminPassword, 12)
     const staffPasswordHash = await bcrypt.hash(staffPassword, 12)
-    // Demo customer + demo order exist only for automated tests (SEED_DEMO_DATA=true).
+    // The kitchen staff and customer accounts and the demo order exist only for
+    // automated tests (SEED_DEMO_DATA=true). On the live site the admin does everything.
     const withDemo = process.env.SEED_DEMO_DATA === "true"
     const customerPasswordHash = await bcrypt.hash("Customer@1234", 12)
 
@@ -76,7 +77,7 @@ async function seed() {
 
     const insertedUsers = await db
       .insert(users)
-      .values(withDemo ? testUsersData : testUsersData.filter((u) => u.role !== "CUSTOMER"))
+      .values(withDemo ? testUsersData : testUsersData.filter((u) => u.role === "ADMIN"))
       .onConflictDoUpdate({
         target: users.email,
         set: {

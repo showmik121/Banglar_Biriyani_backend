@@ -38,19 +38,19 @@ for the [frontend](https://github.com/showmik121/Banglar_Biriyani_frontend).
 
 ## Admin panel
 
-Open `/admin` on the website and sign in with an ADMIN or STAFF account.
+Open `/admin` on the website and sign in with the admin account (`admin@banglarbiriyani.com`).
+The admin does everything; there is no separate kitchen staff account.
 
-| পাতা | কী করা যায় | কে পারে |
-| --- | --- | --- |
-| Live Orders | অর্ডার দেখা, স্ট্যাটাস বদলানো (Confirmed → Preparing → Out for delivery → Delivered), bKash/Nagad পেমেন্ট যাচাই | ADMIN, STAFF |
-| Menu & Dishes | খাবার যোগ, ছবি ও দাম বদলানো, চালু/বন্ধ | ADMIN (যোগ/মুছা), STAFF (এডিট) |
-| Offers | প্রোমো কোড (যেমন DIU10), % বা ৳ ছাড়, সর্বনিম্ন অর্ডার, শুরু/শেষ তারিখ | ADMIN (STAFF শুধু দেখে) |
-| Delivery Points | ডেলিভারি এলাকা, প্রতিটার ফি আর সময় | ADMIN (STAFF শুধু দেখে) |
-| Customers & Staff | কাউকে STAFF/ADMIN বানানো বা বন্ধ করা | ADMIN |
+| পাতা | কী করা যায় |
+| --- | --- |
+| Orders | আজ / এই মাস / সব মিলিয়ে বিক্রি ও অর্ডার সংখ্যা, অর্ডার দেখা, এক ক্লিকে পরের ধাপ (Confirm → Cooking → On the way → Delivered), bKash/Nagad পেমেন্ট নিশ্চিত করা, অর্ডার বাতিল |
+| Menu | খাবার যোগ, ছবি (লিংক), নাম, দাম বদলানো, মেনুতে দেখানো/লুকানো |
+| Offers | প্রোমো কোড (যেমন DIU10), % বা ৳ ছাড়, সর্বনিম্ন অর্ডার, শেষ তারিখ |
+| Delivery points | ডেলিভারি এলাকা আর সময় (ডেলিভারি ফ্রি) |
 
 নিরাপত্তা: পাসওয়ার্ড bcrypt দিয়ে hash করা, login session HttpOnly cookie-তে, ৫ বার ভুল পাসওয়ার্ডে ১৫ মিনিট বন্ধ,
 প্রতিটা admin API-তে role যাচাই, আর প্রতিটা পরিবর্তন `audit_logs` টেবিলে লেখা থাকে।
-দাম, ছাড় আর ডেলিভারি ফি সবসময় server-এ হিসাব হয়, browser থেকে বদলানো যায় না।
+দাম আর ছাড় সবসময় server-এ হিসাব হয় (ডেলিভারি ফ্রি), browser থেকে বদলানো যায় না।
 
 ### নতুন টেবিল যোগ করা (একবার)
 
