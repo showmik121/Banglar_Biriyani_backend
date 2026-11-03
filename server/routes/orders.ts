@@ -13,6 +13,7 @@ import { DELIVERY_FEE_BDT, computeTotal, evaluateOffer } from "../utils/pricing.
 import { createOrderSchema } from "../validators/orderSchema.js"
 import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
+import { samePhone } from "../utils/phone.js"
 
 export const ordersRouter = new Hono()
 
@@ -408,14 +409,37 @@ ordersRouter.get("/my-orders", requireAuth, async (c) => {
 })
 
 /**
- * GET /api/orders/:orderNumber
- * Returns order details and line items by orderNumber
+ * GET /api/orders/:orderNumber?phone=01XXXXXXXXX
+ * Track one order. Allowed for the signed-in customer who placed it, the admin,
+ * or anyone who also gives the phone number used for the order (guest orders).
+ * Without that, it answers "not found" so order numbers can't be used to look up
+ * other people's details.
  */
-ordersRouter.get("/:orderNumber", async (c) => {
+ordersRouter.get("/:orderNumber", optionalAuth, async (c) => {
   try {
-    const orderNumber = c.req.param("orderNumber")
+    const orderNumber = c.req.param("orderNumber").trim().toUpperCase()
+    const phone = c.req.query("phone") || ""
+    const user = c.get("user")
 
-    const [order] = await db.select().from(orders).where(eq(orders.orderNumber, orderNumber))
+    if (!user && !phone) {
+      return c.json(
+        {
+          error: {
+            code: "PHONE_REQUIRED",
+            message: "Enter the phone number you used for this order.",
+            details: null,
+          },
+        },
+        400,
+      )
+    }
+
+    const [found] = await db.select().from(orders).where(eq(orders.orderNumber, orderNumber))
+    const allowed =
+      !!found &&
+      ((user && (user.role === "ADMIN" || user.role === "STAFF" || found.userId === user.id)) ||
+        (phone !== "" && samePhone(phone, found.customerPhone)))
+    const order = allowed ? found : undefined
 
     if (!order) {
       return c.json(

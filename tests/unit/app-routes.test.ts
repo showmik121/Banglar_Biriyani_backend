@@ -26,6 +26,13 @@ describe("API routes that need no database", () => {
     expect(body.error.code).toBe("NOT_FOUND")
   })
 
+  test("tracking an order needs the phone number when not signed in", async () => {
+    const res = await app.request("/api/orders/BB-20261103-1234567")
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { data?: any; error?: any }
+    expect(body.error.code).toBe("PHONE_REQUIRED")
+  })
+
   test("protected routes reject requests without a session", async () => {
     for (const url of [
       "/api/orders/my-orders",
