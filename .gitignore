@@ -34,3 +34,4 @@ env-ready.txt
 # Local helper files that are not part of the project (may contain secrets)
 create-env.bat
 scripts/create-env.mjs
+commit-message.txt

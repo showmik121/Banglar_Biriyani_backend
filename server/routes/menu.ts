@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { eq, and } from "drizzle-orm"
+import { eq, and, asc, desc } from "drizzle-orm"
 import { db, categories, menuItems, dailyMenuSchedules } from "../../src/db/index.js"
 
 export const VALID_DAYS = [
@@ -13,6 +13,9 @@ export const VALID_DAYS = [
 ] as const
 
 export type ValidDay = (typeof VALID_DAYS)[number]
+
+/** How many special meals each day shows. Admins pick them in the admin panel (Meals tab). */
+export const MEALS_PER_DAY = 3
 
 export function normalizeDay(input?: string | null): ValidDay | null {
   if (!input) return null
@@ -119,6 +122,75 @@ export async function getMenuItemsForDay(day: ValidDay) {
   return combined
 }
 
+/**
+ * The special meals chosen for one day (at most MEALS_PER_DAY), day specials first.
+ */
+export async function getMealsForDay(day: ValidDay) {
+  const rows = await db
+    .select({
+      id: menuItems.id,
+      categoryId: menuItems.categoryId,
+      categoryName: categories.name,
+      categorySlug: categories.slug,
+      name: menuItems.name,
+      description: menuItems.description,
+      basePriceBdt: menuItems.basePriceBdt,
+      specialPriceBdt: dailyMenuSchedules.specialPriceBdt,
+      imageUrl: menuItems.imageUrl,
+      portionSize: menuItems.portionSize,
+      spiceLevel: menuItems.spiceLevel,
+      rating: menuItems.rating,
+      isEveryday: menuItems.isEveryday,
+      isAvailable: menuItems.isAvailable,
+      isFeatured: dailyMenuSchedules.isFeatured,
+      dailyQuota: dailyMenuSchedules.dailyQuota,
+      soldCount: dailyMenuSchedules.soldCount,
+    })
+    .from(dailyMenuSchedules)
+    .innerJoin(menuItems, eq(dailyMenuSchedules.menuItemId, menuItems.id))
+    .innerJoin(categories, eq(menuItems.categoryId, categories.id))
+    .where(and(eq(dailyMenuSchedules.dayOfWeek, day), eq(menuItems.isAvailable, true)))
+    .orderBy(desc(dailyMenuSchedules.isFeatured), asc(dailyMenuSchedules.id))
+    .limit(MEALS_PER_DAY)
+
+  return rows.map((item) => {
+    const quota = item.dailyQuota ?? 100
+    const sold = item.soldCount ?? 0
+    return {
+      ...item,
+      dailyQuota: quota,
+      soldCount: sold,
+      remainingPortions: Math.max(0, quota - sold),
+      priceBdt: item.specialPriceBdt ?? item.basePriceBdt,
+    }
+  })
+}
+
+/** Every available dish, for the "Our menu" section. */
+export async function getCatalog() {
+  const rows = await db
+    .select({
+      id: menuItems.id,
+      categoryId: menuItems.categoryId,
+      categoryName: categories.name,
+      categorySlug: categories.slug,
+      name: menuItems.name,
+      description: menuItems.description,
+      basePriceBdt: menuItems.basePriceBdt,
+      imageUrl: menuItems.imageUrl,
+      portionSize: menuItems.portionSize,
+      spiceLevel: menuItems.spiceLevel,
+      rating: menuItems.rating,
+      isEveryday: menuItems.isEveryday,
+      isAvailable: menuItems.isAvailable,
+    })
+    .from(menuItems)
+    .innerJoin(categories, eq(menuItems.categoryId, categories.id))
+    .where(eq(menuItems.isAvailable, true))
+    .orderBy(categories.sortOrder, menuItems.id)
+  return rows.map((item) => ({ ...item, priceBdt: item.basePriceBdt, isFeatured: false }))
+}
+
 export const menuRouter = new Hono()
 
 /**
@@ -164,13 +236,17 @@ menuRouter.get("/", async (c) => {
       FRIDAY: [],
     }
 
-    for (const d of VALID_DAYS) {
-      scheduleByDay[d] = await getMenuItemsForDay(d)
-    }
+    // days: the special meals chosen for each day; items: every dish for "Our menu"
+    const [meals, items] = await Promise.all([Promise.all(VALID_DAYS.map((d) => getMealsForDay(d))), getCatalog()])
+    VALID_DAYS.forEach((d, i) => {
+      scheduleByDay[d] = meals[i]
+    })
 
     return c.json({
       data: {
         days: scheduleByDay,
+        items,
+        mealsPerDay: MEALS_PER_DAY,
       },
     })
   } catch (error) {

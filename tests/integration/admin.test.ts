@@ -179,6 +179,28 @@ describe("Banglar Biriyani Admin API & RBAC Test Suite (TDD)", () => {
       assert.ok(updatedItem1, "Must find updated item 1")
       assert.equal(updatedItem1.specialPriceBdt, 420)
     })
+
+    test("PUT /api/admin/schedule/:day accepts at most 3 meals per day", async () => {
+      const catRes = await app.request("http://localhost/api/admin/schedule", {
+        headers: { Cookie: adminCookie },
+      })
+      const catalog = (await catRes.json()).data.menuCatalog
+      const res = await app.request("http://localhost/api/admin/schedule/THURSDAY", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Cookie: adminCookie },
+        body: JSON.stringify({ assignments: catalog.slice(0, 4).map((i: any) => ({ menuItemId: i.id })) }),
+      })
+      assert.equal(res.status, 422)
+      assert.equal((await res.json()).error.code, "TOO_MANY_MEALS")
+    })
+
+    test("GET /api/menu lists at most 3 meals per day plus the full menu", async () => {
+      const res = await app.request("http://localhost/api/menu")
+      assert.equal(res.status, 200)
+      const body = await res.json()
+      for (const day of Object.keys(body.data.days)) assert.ok(body.data.days[day].length <= 3)
+      assert.ok(Array.isArray(body.data.items) && body.data.items.length > 0)
+    })
   })
 
   // =========================================================================

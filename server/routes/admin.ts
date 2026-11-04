@@ -15,6 +15,7 @@ import {
 } from "../../src/db/index.js"
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js"
 import { EMAIL_STATUSES, sendOrderEmail, type OrderEmailKind } from "../utils/email.js"
+import { MEALS_PER_DAY } from "./menu.js"
 import {
   dayOfWeekEnumSchema,
   updateOrderStatusSchema,
@@ -233,6 +234,27 @@ adminRouter.put("/schedule/:day", requireRole(["ADMIN", "STAFF"]), async (c) => 
 
   const { assignments } = parseResult.data
   const user = c.get("user")!
+
+  if (assignments.length > MEALS_PER_DAY) {
+    return c.json(
+      {
+        error: {
+          code: "TOO_MANY_MEALS",
+          message: `Choose up to ${MEALS_PER_DAY} meals for a day`,
+          details: null,
+        },
+      },
+      422,
+    )
+  }
+  if (new Set(assignments.map((a) => a.menuItemId)).size !== assignments.length) {
+    return c.json(
+      {
+        error: { code: "DUPLICATE_MEAL", message: "The same dish is chosen twice for this day", details: null },
+      },
+      422,
+    )
+  }
 
   try {
     const updatedSchedules = await db.transaction(async (tx) => {

@@ -44,12 +44,17 @@ if not errorlevel 1 (
 
 git diff --cached --quiet
 if errorlevel 1 (
-  git commit -m "Banglar Biriyani backend: theme, tests and CI" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  if exist commit-message.txt (
+    git commit -q -F commit-message.txt
+  ) else (
+    git commit -m "Banglar Biriyani backend update"
+  )
 )
 
 echo.
 echo Uploading to %REPO% ...
 echo A GitHub sign-in window may open. Sign in with an account that can push to this repository.
+if exist commit-message.txt del commit-message.txt
 git push -u origin main
 if errorlevel 1 (
   echo.
