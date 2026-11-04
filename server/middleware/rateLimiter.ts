@@ -19,6 +19,11 @@ export interface RateLimitOptions {
  * Extracts client IP from headers or connection
  */
 export function getClientIp(c: Context): string {
+  // Netlify forwards /api to the backend and adds the real visitor address in this header.
+  // Prefer it: x-forwarded-for can be typed by the visitor, so it is easy to fake.
+  const netlifyIp = c.req.header("x-nf-client-connection-ip")
+  if (netlifyIp && netlifyIp.trim()) return netlifyIp.trim()
+
   const forwardedFor = c.req.header("x-forwarded-for")
   if (forwardedFor) {
     const first = forwardedFor.split(",")[0].trim()

@@ -28,3 +28,34 @@ describe("error details", () => {
     expect(errorDetails(new Error("boom"))).toBe("boom")
   })
 })
+
+describe("client address and JWT secret hardening", () => {
+  test("prefers the Netlify visitor address over a typed x-forwarded-for", async () => {
+    const { getClientIp } = await import("../../server/middleware/rateLimiter.js")
+    const c = {
+      req: {
+        header: (n: string) =>
+          ({ "x-nf-client-connection-ip": "203.0.113.9", "x-forwarded-for": "1.2.3.4" })[n.toLowerCase()],
+      },
+    } as never
+    expect(getClientIp(c)).toBe("203.0.113.9")
+  })
+
+  test("refuses to start without JWT_SECRET unless NODE_ENV is development or test", async () => {
+    const { getJwtSecret } = await import("../../server/utils/auth.js")
+    const oldEnv = process.env.NODE_ENV
+    const oldSecret = process.env.JWT_SECRET
+    delete process.env.JWT_SECRET
+    try {
+      process.env.NODE_ENV = ""
+      expect(() => getJwtSecret()).toThrow()
+      process.env.NODE_ENV = "production"
+      expect(() => getJwtSecret()).toThrow()
+      process.env.NODE_ENV = "test"
+      expect(getJwtSecret()).toBeTruthy()
+    } finally {
+      process.env.NODE_ENV = oldEnv
+      if (oldSecret !== undefined) process.env.JWT_SECRET = oldSecret
+    }
+  })
+})

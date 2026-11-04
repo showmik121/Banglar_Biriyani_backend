@@ -17,10 +17,11 @@ export interface JwtSessionPayload {
 export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET
   if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "CRITICAL SECURITY ERROR: JWT_SECRET environment variable is missing in production!",
-      )
+    // The built-in key is only for local development and tests. Anywhere else
+    // (production, or NODE_ENV forgotten) a missing secret stops the server instead.
+    const env = process.env.NODE_ENV
+    if (env !== "development" && env !== "test") {
+      throw new Error("CRITICAL SECURITY ERROR: JWT_SECRET environment variable is missing!")
     }
     return "banglar-biriyani-dev-jwt-secret-key-must-be-changed-in-prod"
   }

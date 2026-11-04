@@ -13,7 +13,7 @@ import {
 } from "../utils/auth.js"
 import { signupSchema, loginSchema, updateProfileSchema } from "../validators/authSchema.js"
 import { requireAuth, type SafeUser } from "../middleware/authMiddleware.js"
-import { getClientIp } from "../middleware/rateLimiter.js"
+import { getClientIp, createFailureLimiter } from "../middleware/rateLimiter.js"
 import { errorDetails } from "../utils/errors.js"
 
 export const authRouter = new Hono()
@@ -28,6 +28,9 @@ interface FailedLoginRecord {
 const failedLoginStore = new Map<string, FailedLoginRecord>()
 const FAILED_LOGIN_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 const MAX_FAILED_LOGIN_ATTEMPTS = 5
+// Also count wrong passwords per account, so guessing one account's password stays slow
+// even when the visitor changes address between tries.
+const accountFailures = createFailureLimiter(10, 15 * 60 * 1000)
 
 function checkLoginRateLimit(ip: string): { isBlocked: boolean; retryAfterSeconds: number } {
   const record = failedLoginStore.get(ip)
@@ -284,6 +287,21 @@ authRouter.post("/login", async (c) => {
     const normalizedIdentifier = identifier.trim()
     const normalizedPhone = normalizeBdPhone(normalizedIdentifier)
     const normalizedEmail = normalizedIdentifier.toLowerCase()
+    const accountKey = `acct:${normalizedPhone || normalizedEmail}`
+    const accountWait = accountFailures.retryAfterSeconds(accountKey)
+    if (accountWait > 0) {
+      c.header("Retry-After", String(accountWait))
+      return c.json(
+        {
+          error: {
+            code: "RATE_LIMIT_EXCEEDED",
+            message: "Too many failed login attempts. Please try again after 15 minutes.",
+            details: { retryAfterSeconds: accountWait },
+          },
+        },
+        429,
+      )
+    }
 
     // Find user by either email (case-insensitive) or phone (normalized or raw)
     const matchedUsers = await db
@@ -300,6 +318,7 @@ authRouter.post("/login", async (c) => {
 
     if (matchedUsers.length === 0) {
       recordFailedLogin(ip)
+      accountFailures.recordFailure(accountKey)
       return c.json(
         {
           error: {
@@ -332,6 +351,7 @@ authRouter.post("/login", async (c) => {
     const isPasswordValid = await verifyPassword(password, user.passwordHash)
     if (!isPasswordValid) {
       recordFailedLogin(ip)
+      accountFailures.recordFailure(accountKey)
       return c.json(
         {
           error: {
