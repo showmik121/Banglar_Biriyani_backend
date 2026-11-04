@@ -23,6 +23,20 @@ async function seed() {
   console.log("🌱 Starting Banglar Biriyani database seed...")
 
   try {
+    // Safety: this script erases everything. Never run it by accident on a live database.
+    if (process.env.SEED_FORCE !== "true") {
+      const [existing] = await db.execute<{ users: number; orders: number }>(sql`
+        SELECT (SELECT COUNT(*) FROM users)::int AS users, (SELECT COUNT(*) FROM orders)::int AS orders
+      `)
+      if (existing && (existing.users > 0 || existing.orders > 0)) {
+        console.error(
+          `STOP: this database already has ${existing.users} account(s) and ${existing.orders} order(s). ` +
+            "The seed script would ERASE them. To really start from scratch, add SEED_FORCE=true to your .env first.",
+        )
+        process.exit(1)
+      }
+    }
+
     // 1. Clean existing data in reverse order of foreign keys
     console.log("🧹 Cleaning existing tables...")
     await db.execute(sql`

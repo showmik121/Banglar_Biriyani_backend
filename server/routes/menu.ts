@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { eq, and, asc, desc } from "drizzle-orm"
 import { db, categories, menuItems, dailyMenuSchedules } from "../../src/db/index.js"
 import { MAX_ITEMS_PER_MEAL, MEAL_TIMES } from "../validators/adminSchema.js"
+import { errorDetails } from "../utils/errors.js"
 
 export const VALID_DAYS = [
   "SATURDAY",
@@ -272,7 +273,7 @@ menuRouter.get("/", async (c) => {
         error: {
           code: "DATABASE_ERROR",
           message: "Failed to retrieve menu data from database",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -317,7 +318,7 @@ menuRouter.get("/:day", async (c) => {
         error: {
           code: "DATABASE_ERROR",
           message: "Failed to retrieve day menu",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,

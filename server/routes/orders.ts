@@ -15,8 +15,13 @@ import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
 import { samePhone } from "../utils/phone.js"
 import { sendOrderEmail } from "../utils/email.js"
+import { errorDetails } from "../utils/errors.js"
+import { createFailureLimiter, getClientIp } from "../middleware/rateLimiter.js"
 
 export const ordersRouter = new Hono()
+
+// Stops people guessing order number + phone combinations: 20 wrong lookups per 15 minutes per IP
+const lookupFailures = createFailureLimiter(20, 15 * 60 * 1000)
 
 function generateOrderNumber(): string {
   const now = new Date()
@@ -412,7 +417,7 @@ ordersRouter.get("/my-orders", requireAuth, async (c) => {
         error: {
           code: "DATABASE_ERROR",
           message: "Failed to retrieve user orders",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -432,6 +437,22 @@ ordersRouter.get("/:orderNumber", optionalAuth, async (c) => {
     const orderNumber = c.req.param("orderNumber").trim().toUpperCase()
     const phone = c.req.query("phone") || ""
     const user = c.get("user")
+    const ip = getClientIp(c)
+
+    const wait = lookupFailures.retryAfterSeconds(ip)
+    if (wait > 0) {
+      c.header("Retry-After", String(wait))
+      return c.json(
+        {
+          error: {
+            code: "RATE_LIMIT_EXCEEDED",
+            message: "Too many wrong tries. Please wait a few minutes and try again.",
+            details: { retryAfterSeconds: wait },
+          },
+        },
+        429,
+      )
+    }
 
     if (!user && !phone) {
       return c.json(
@@ -454,6 +475,7 @@ ordersRouter.get("/:orderNumber", optionalAuth, async (c) => {
     const order = allowed ? found : undefined
 
     if (!order) {
+      lookupFailures.recordFailure(ip)
       return c.json(
         {
           error: {
@@ -496,7 +518,7 @@ ordersRouter.get("/:orderNumber", optionalAuth, async (c) => {
         error: {
           code: "DATABASE_ERROR",
           message: "Failed to retrieve order",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,

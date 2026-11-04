@@ -35,3 +35,9 @@ env-ready.txt
 create-env.bat
 scripts/create-env.mjs
 commit-message.txt
+
+# Claude Code project skills (local tooling, not part of the site)
+.claude/
+# Local Claude Code tooling, not part of the site
+ecc-skills/
+install-ecc-skills.bat

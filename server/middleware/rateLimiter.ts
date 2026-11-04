@@ -104,4 +104,37 @@ export function orderRateLimiter(options: RateLimitOptions = {}) {
  */
 export function resetRateLimits() {
   ipStore.clear()
+  for (const limiter of failureLimiters) limiter.reset()
+}
+
+/**
+ * Counts failed attempts per IP (for example wrong order number + phone combinations)
+ * and blocks the IP for the rest of the window after too many.
+ */
+const failureLimiters: { reset(): void }[] = []
+
+export function createFailureLimiter(max: number, windowMs: number) {
+  const store = new Map<string, { count: number; first: number }>()
+  const current = (ip: string) => {
+    const rec = store.get(ip)
+    if (!rec || Date.now() - rec.first > windowMs) return undefined
+    return rec
+  }
+  const limiter = {
+    retryAfterSeconds(ip: string): number {
+      const rec = current(ip)
+      if (!rec || rec.count < max) return 0
+      return Math.max(1, Math.ceil((rec.first + windowMs - Date.now()) / 1000))
+    },
+    recordFailure(ip: string) {
+      const rec = current(ip)
+      if (rec) rec.count += 1
+      else store.set(ip, { count: 1, first: Date.now() })
+    },
+    reset() {
+      store.clear()
+    },
+  }
+  failureLimiters.push(limiter)
+  return limiter
 }

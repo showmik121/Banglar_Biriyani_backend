@@ -18,6 +18,7 @@
     "db:push": "drizzle-kit push",
     "db:upgrade": "tsx src/db/upgrade.ts",
     "db:seed": "tsx src/db/seed.ts",
+    "db:set-admin": "tsx src/db/set-admin.ts",
     "db:remove-demo": "tsx src/db/remove-demo-data.ts"
   },
   "dependencies": {

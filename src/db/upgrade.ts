@@ -34,8 +34,8 @@ const steps: { name: string; run: () => Promise<unknown> }[] = [
     },
   },
   {
-    // At most 6 dishes per meal (e.g. Monday lunch). Specials are kept first; dishes are not deleted.
-    name: "At most 6 dishes per meal",
+    // At most 12 dishes per meal (e.g. Monday lunch). Specials are kept first; dishes are not deleted.
+    name: "At most 12 dishes per meal",
     run: () =>
       db.execute(sql`
         DELETE FROM daily_menu_schedules
@@ -46,9 +46,19 @@ const steps: { name: string; run: () => Promise<unknown> }[] = [
             ) AS position
             FROM daily_menu_schedules
           ) ranked
-          WHERE ranked.position > 6
+          WHERE ranked.position > 12
         )
       `),
+  },
+  {
+    // The admin order list filters by status and shows the newest first
+    name: "Faster order list for the admin",
+    run: () => db.execute(sql`CREATE INDEX IF NOT EXISTS orders_status_created_idx ON orders (status, created_at DESC)`),
+  },
+  {
+    // Signed-out sessions that have already expired are not needed any more
+    name: "Remove expired sign-in sessions",
+    run: () => db.execute(sql`DELETE FROM sessions WHERE expires_at < NOW()`),
   },
 ]
 

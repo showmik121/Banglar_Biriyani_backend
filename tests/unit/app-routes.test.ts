@@ -19,6 +19,25 @@ describe("API routes that need no database", () => {
     expect(body.data.status).toBe("ok")
   })
 
+  test("responses carry basic security headers", async () => {
+    const res = await app.request("/api/health")
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(res.headers.get("x-frame-options")).toBeTruthy()
+  })
+
+  test("only known websites get CORS access", async () => {
+    const other = await app.request("/api/health", { headers: { Origin: "https://evil.example" } })
+    expect(other.headers.get("access-control-allow-origin")).toBeFalsy()
+
+    const local = await app.request("/api/health", { headers: { Origin: "http://localhost:5173" } })
+    expect(local.headers.get("access-control-allow-origin")).toBe("http://localhost:5173")
+
+    process.env.ALLOWED_ORIGINS = "https://shop.example.com"
+    const listed = await app.request("/api/health", { headers: { Origin: "https://shop.example.com" } })
+    expect(listed.headers.get("access-control-allow-origin")).toBe("https://shop.example.com")
+    delete process.env.ALLOWED_ORIGINS
+  })
+
   test("unknown endpoints return a JSON 404", async () => {
     const res = await app.request("/api/does-not-exist")
     expect(res.status).toBe(404)

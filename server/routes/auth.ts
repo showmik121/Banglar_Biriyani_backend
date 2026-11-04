@@ -14,6 +14,7 @@ import {
 import { signupSchema, loginSchema, updateProfileSchema } from "../validators/authSchema.js"
 import { requireAuth, type SafeUser } from "../middleware/authMiddleware.js"
 import { getClientIp } from "../middleware/rateLimiter.js"
+import { errorDetails } from "../utils/errors.js"
 
 export const authRouter = new Hono()
 
@@ -214,7 +215,7 @@ authRouter.post("/signup", async (c) => {
         error: {
           code: "SIGNUP_FAILED",
           message: "Failed to create account",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -395,7 +396,7 @@ authRouter.post("/login", async (c) => {
         error: {
           code: "LOGIN_FAILED",
           message: "Failed to authenticate",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -555,7 +556,7 @@ authRouter.patch("/profile", requireAuth, async (c) => {
         error: {
           code: "UPDATE_PROFILE_FAILED",
           message: "Failed to update profile",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,

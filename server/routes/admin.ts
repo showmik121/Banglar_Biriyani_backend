@@ -24,6 +24,7 @@ import {
   updateMenuItemSchema,
   updateUserRoleSchema,
 } from "../validators/adminSchema.js"
+import { errorDetails } from "../utils/errors.js"
 
 export const adminRouter = new Hono()
 
@@ -180,7 +181,7 @@ adminRouter.get("/schedule", requireRole(["ADMIN", "STAFF"]), async (c) => {
         error: {
           code: "SCHEDULE_FETCH_FAILED",
           message: "Failed to retrieve schedules",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -337,7 +338,7 @@ adminRouter.put("/schedule/:day", requireRole(["ADMIN", "STAFF"]), async (c) => 
         error: {
           code: "SYNC_SCHEDULE_FAILED",
           message: "Failed to update daily menu schedule",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -509,7 +510,7 @@ adminRouter.post("/menu", requireRole(["ADMIN"]), async (c) => {
         error: {
           code: "CREATE_MENU_ITEM_FAILED",
           message: "Failed to create menu item",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -620,7 +621,7 @@ adminRouter.patch("/menu/:id", requireRole(["ADMIN", "STAFF"]), async (c) => {
         error: {
           code: "UPDATE_MENU_ITEM_FAILED",
           message: "Failed to update menu item",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -721,7 +722,7 @@ adminRouter.delete("/menu/:id", requireRole(["ADMIN"]), async (c) => {
         error: {
           code: "DELETE_MENU_ITEM_FAILED",
           message: "Failed to delete menu item",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -842,7 +843,7 @@ adminRouter.get("/orders", requireRole(["ADMIN", "STAFF"]), async (c) => {
         error: {
           code: "ORDERS_FETCH_FAILED",
           message: "Failed to retrieve orders",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -962,7 +963,7 @@ adminRouter.patch("/orders/:id/status", requireRole(["ADMIN", "STAFF"]), async (
         error: {
           code: "UPDATE_STATUS_FAILED",
           message: "Failed to update order status",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -1035,7 +1036,7 @@ adminRouter.patch("/orders/:id/verify-payment", requireRole(["ADMIN", "STAFF"]),
         error: {
           code: "VERIFY_PAYMENT_FAILED",
           message: "Failed to update payment verification status",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -1079,7 +1080,7 @@ adminRouter.get("/users", requireRole(["ADMIN"]), async (c) => {
         error: {
           code: "USERS_FETCH_FAILED",
           message: "Failed to retrieve user accounts",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,
@@ -1226,7 +1227,7 @@ adminRouter.patch("/users/:id/role", requireRole(["ADMIN"]), async (c) => {
         error: {
           code: "UPDATE_USER_ROLE_FAILED",
           message: "Failed to update user role",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorDetails(error),
         },
       },
       500,

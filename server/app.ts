@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
+import { secureHeaders } from "hono/secure-headers"
 import { menuRouter } from "./routes/menu.js"
 import { ordersRouter } from "./routes/orders.js"
 import { authRouter } from "./routes/auth.js"
@@ -13,10 +14,22 @@ export const app = new Hono()
 
 // Global Middlewares
 app.use("*", logger())
+app.use("*", secureHeaders())
+
+// Which websites may call the API from a browser. The live site reaches the API through
+// its own address (Netlify forwards /api), so it needs nothing here. Add other sites to the
+// ALLOWED_ORIGINS secret, separated by commas (for example https://www.client-domain.com).
+const allowedOrigins = () =>
+  (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean)
+const isLocalOrigin = (o: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)
+
 app.use(
   "*",
   cors({
-    origin: (origin) => origin || "*",
+    origin: (origin) => (origin && (allowedOrigins().includes(origin) || isLocalOrigin(origin)) ? origin : ""),
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
