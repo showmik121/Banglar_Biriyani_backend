@@ -17,6 +17,7 @@ import { dhakaNow, isMealOpen, mealForHour, mealWindowsEnabled, windowText, type
 import { samePhone } from "../utils/phone.js"
 import { sendOrderEmail } from "../utils/email.js"
 import { errorDetails } from "../utils/errors.js"
+import { parsePaging } from "../utils/paging.js"
 import { createFailureLimiter, getClientIp } from "../middleware/rateLimiter.js"
 
 export const ordersRouter = new Hono()
@@ -400,15 +401,18 @@ ordersRouter.post(
 ordersRouter.get("/my-orders", requireAuth, async (c) => {
   try {
     const user = c.get("user")!
+    const { limit, offset } = parsePaging(c.req.query(), 50, 100)
 
     const userOrders = await db
       .select()
       .from(orders)
       .where(eq(orders.userId, user.id))
       .orderBy(sql`${orders.createdAt} DESC`)
+      .limit(limit)
+      .offset(offset)
 
     if (userOrders.length === 0) {
-      return c.json({ data: [] }, 200)
+      return c.json({ data: [], meta: { limit, offset } }, 200)
     }
 
     const orderIds = userOrders.map((o) => o.id)
@@ -441,7 +445,7 @@ ordersRouter.get("/my-orders", requireAuth, async (c) => {
       items: itemsByOrderId.get(order.id) || [],
     }))
 
-    return c.json({ data: result }, 200)
+    return c.json({ data: result, meta: { limit, offset } }, 200)
   } catch (error) {
     console.error("Error fetching my-orders:", error)
     return c.json(

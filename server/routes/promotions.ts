@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm"
 import { db, offers, deliveryZones, auditLogs } from "../../src/db/index.js"
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js"
 import { evaluateOffer } from "../utils/pricing.js"
+import { createRequestLimiter } from "../middleware/rateLimiter.js"
 import {
   deliveryZoneInputSchema,
   deliveryZoneUpdateSchema,
@@ -73,7 +74,13 @@ publicPromotionsRouter.get("/offers", async (c) => {
 })
 
 /** POST /api/offers/validate — { code, subtotalBdt } -> discount preview for checkout */
-publicPromotionsRouter.post("/offers/validate", async (c) => {
+// Stops people from trying promo codes one after another
+const validateLimiter = createRequestLimiter(
+  60,
+  15 * 60 * 1000,
+  "Too many promo code checks. Please wait a few minutes and try again.",
+)
+publicPromotionsRouter.post("/offers/validate", validateLimiter, async (c) => {
   const parsed = validateOfferSchema.safeParse(await readJson(c))
   if (!parsed.success) {
     return fail(c, 422, "VALIDATION_ERROR", "Enter a promo code", parsed.error.flatten().fieldErrors)

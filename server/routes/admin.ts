@@ -9,9 +9,9 @@ import {
   categories,
   dailyMenuSchedules,
   auditLogs,
+  orderStatusEnum,
+  paymentMethodEnum,
   type dayOfWeekEnum,
-  type orderStatusEnum,
-  type paymentMethodEnum,
 } from "../../src/db/index.js"
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js"
 import { EMAIL_STATUSES, sendOrderEmail, type OrderEmailKind } from "../utils/email.js"
@@ -25,6 +25,7 @@ import {
   updateUserRoleSchema,
 } from "../validators/adminSchema.js"
 import { errorDetails } from "../utils/errors.js"
+import { parsePaging } from "../utils/paging.js"
 
 export const adminRouter = new Hono()
 
@@ -741,8 +742,20 @@ adminRouter.get("/orders", requireRole(["ADMIN", "STAFF"]), async (c) => {
     const status = c.req.query("status")?.toUpperCase()
     const paymentMethod = c.req.query("paymentMethod")?.toUpperCase()
     const search = c.req.query("search")?.trim()
-    const limit = Math.min(100, Math.max(1, parseInt(c.req.query("limit") || "50", 10)))
-    const offset = Math.max(0, parseInt(c.req.query("offset") || "0", 10))
+    const { limit, offset } = parsePaging(c.req.query(), 50, 100)
+
+    if (status && !(orderStatusEnum.enumValues as readonly string[]).includes(status)) {
+      return c.json(
+        { error: { code: "INVALID_QUERY", message: `Unknown status '${status}'`, details: { allowed: orderStatusEnum.enumValues } } },
+        422,
+      )
+    }
+    if (paymentMethod && !(paymentMethodEnum.enumValues as readonly string[]).includes(paymentMethod)) {
+      return c.json(
+        { error: { code: "INVALID_QUERY", message: `Unknown payment method '${paymentMethod}'`, details: { allowed: paymentMethodEnum.enumValues } } },
+        422,
+      )
+    }
 
     const conditions = []
 
@@ -1051,6 +1064,7 @@ adminRouter.patch("/orders/:id/verify-payment", requireRole(["ADMIN", "STAFF"]),
 // GET /api/admin/users - Lists users with order count and total spend
 adminRouter.get("/users", requireRole(["ADMIN"]), async (c) => {
   try {
+    const { limit, offset } = parsePaging(c.req.query(), 200, 500)
     const userList = await db
       .select({
         id: users.id,
@@ -1069,9 +1083,12 @@ adminRouter.get("/users", requireRole(["ADMIN"]), async (c) => {
       .leftJoin(orders, eq(users.id, orders.userId))
       .groupBy(users.id)
       .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset)
 
     return c.json({
       data: userList,
+      meta: { limit, offset },
     })
   } catch (error) {
     console.error("Admin users get error:", error)

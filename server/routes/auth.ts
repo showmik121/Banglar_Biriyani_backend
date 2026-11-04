@@ -13,7 +13,7 @@ import {
 } from "../utils/auth.js"
 import { signupSchema, loginSchema, updateProfileSchema } from "../validators/authSchema.js"
 import { requireAuth, type SafeUser } from "../middleware/authMiddleware.js"
-import { getClientIp, createFailureLimiter } from "../middleware/rateLimiter.js"
+import { getClientIp, createFailureLimiter, createRequestLimiter } from "../middleware/rateLimiter.js"
 import { errorDetails } from "../utils/errors.js"
 
 export const authRouter = new Hono()
@@ -90,7 +90,13 @@ function toSafeUser(user: typeof users.$inferSelect): SafeUser {
  * POST /api/auth/signup
  * Register a new customer account
  */
-authRouter.post("/signup", async (c) => {
+// Limits sign-ups from one address (a campus or office can share one address, so this is generous)
+const signupLimiter = createRequestLimiter(
+  20,
+  15 * 60 * 1000,
+  "Too many sign-up attempts. Please wait a few minutes and try again.",
+)
+authRouter.post("/signup", signupLimiter, async (c) => {
   try {
     const rawBody = await c.req.json().catch(() => null)
     if (!rawBody) {

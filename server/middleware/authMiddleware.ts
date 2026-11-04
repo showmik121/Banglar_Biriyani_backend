@@ -155,10 +155,7 @@ export function requireRole(allowedRoles: ("CUSTOMER" | "STAFF" | "ADMIN")[]): M
           error: {
             code: "FORBIDDEN",
             message: "Insufficient permissions",
-            details: {
-              userRole: user.role,
-              requiredRoles: allowedRoles,
-            },
+            details: null,
           },
         },
         403,

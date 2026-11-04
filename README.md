@@ -1,7 +1,8 @@
 # Banglar Biriyani — Backend API
 
-Hono + Neon PostgreSQL + Drizzle ORM. Serves the menu, login/sign-up, orders and the admin panel
+Hono + Supabase PostgreSQL + Drizzle ORM. Serves the menu, login/sign-up, orders and the admin panel
 for the [frontend](https://github.com/showmik121/Banglar_Biriyani_frontend).
+Every endpoint, its rules and error codes are listed in [API.md](API.md).
 
 ## প্রথমবার চালানো
 

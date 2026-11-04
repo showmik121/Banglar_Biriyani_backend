@@ -143,3 +143,24 @@ export function createFailureLimiter(max: number, windowMs: number) {
   failureLimiters.push(limiter)
   return limiter
 }
+
+/**
+ * Limits how many requests one IP can make to a route in a time window (every request counts).
+ * Each call makes its own counter, so routes do not use up each other's allowance.
+ */
+export function createRequestLimiter(max: number, windowMs: number, message: string) {
+  const limiter = createFailureLimiter(max, windowMs)
+  return async function requestLimitMiddleware(c: Context, next: Next) {
+    const ip = getClientIp(c)
+    const wait = limiter.retryAfterSeconds(ip)
+    if (wait > 0) {
+      c.header("Retry-After", String(wait))
+      return c.json(
+        { error: { code: "RATE_LIMIT_EXCEEDED", message, details: { retryAfterSeconds: wait } } },
+        429,
+      )
+    }
+    limiter.recordFailure(ip)
+    return next()
+  }
+}
