@@ -146,9 +146,11 @@ export const dailyMenuSchedules = pgTable(
     dailyQuota: integer("daily_quota").default(100).notNull(),
     soldCount: integer("sold_count").default(0).notNull(),
     isFeatured: boolean("is_featured").default(false).notNull(),
+    // BREAKFAST, LUNCH or DINNER: which part of the day this dish is served
+    mealTime: text("meal_time").default("LUNCH").notNull(),
   },
   (table) => [
-    uniqueIndex("item_day_unique_idx").on(table.menuItemId, table.dayOfWeek),
+    uniqueIndex("item_day_meal_unique_idx").on(table.menuItemId, table.dayOfWeek, table.mealTime),
     index("schedule_day_idx").on(table.dayOfWeek),
   ],
 )

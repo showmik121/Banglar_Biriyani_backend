@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { eq, and, asc, desc } from "drizzle-orm"
 import { db, categories, menuItems, dailyMenuSchedules } from "../../src/db/index.js"
+import { MAX_ITEMS_PER_MEAL, MEAL_TIMES } from "../validators/adminSchema.js"
 
 export const VALID_DAYS = [
   "SATURDAY",
@@ -14,8 +15,6 @@ export const VALID_DAYS = [
 
 export type ValidDay = (typeof VALID_DAYS)[number]
 
-/** How many special meals each day shows. Admins pick them in the admin panel (Meals tab). */
-export const MEALS_PER_DAY = 3
 
 export function normalizeDay(input?: string | null): ValidDay | null {
   if (!input) return null
@@ -123,7 +122,8 @@ export async function getMenuItemsForDay(day: ValidDay) {
 }
 
 /**
- * The special meals chosen for one day (at most MEALS_PER_DAY), day specials first.
+ * The meals chosen for one day: breakfast, then lunch, then dinner, each with at most
+ * MAX_ITEMS_PER_MEAL dishes (the meal's special first). Admins pick them in the Daily meals tab.
  */
 export async function getMealsForDay(day: ValidDay) {
   const rows = await db
@@ -145,15 +145,28 @@ export async function getMealsForDay(day: ValidDay) {
       isFeatured: dailyMenuSchedules.isFeatured,
       dailyQuota: dailyMenuSchedules.dailyQuota,
       soldCount: dailyMenuSchedules.soldCount,
+      mealTime: dailyMenuSchedules.mealTime,
     })
     .from(dailyMenuSchedules)
     .innerJoin(menuItems, eq(dailyMenuSchedules.menuItemId, menuItems.id))
     .innerJoin(categories, eq(menuItems.categoryId, categories.id))
     .where(and(eq(dailyMenuSchedules.dayOfWeek, day), eq(menuItems.isAvailable, true)))
     .orderBy(desc(dailyMenuSchedules.isFeatured), asc(dailyMenuSchedules.id))
-    .limit(MEALS_PER_DAY)
 
-  return rows.map((item) => {
+  const order = (m: string) => {
+    const i = (MEAL_TIMES as readonly string[]).indexOf(m)
+    return i === -1 ? 1 : i
+  }
+  const perMeal = new Map<string, number>()
+  const capped = rows
+    .sort((a, b) => order(a.mealTime) - order(b.mealTime))
+    .filter((r) => {
+      const n = (perMeal.get(r.mealTime) ?? 0) + 1
+      perMeal.set(r.mealTime, n)
+      return n <= MAX_ITEMS_PER_MEAL
+    })
+
+  return capped.map((item) => {
     const quota = item.dailyQuota ?? 100
     const sold = item.soldCount ?? 0
     return {
@@ -246,7 +259,7 @@ menuRouter.get("/", async (c) => {
       data: {
         days: scheduleByDay,
         items,
-        mealsPerDay: MEALS_PER_DAY,
+        mealTimes: MEAL_TIMES,
       },
     })
   } catch (error) {

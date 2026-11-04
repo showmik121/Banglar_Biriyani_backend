@@ -15,7 +15,7 @@ import {
 } from "../../src/db/index.js"
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js"
 import { EMAIL_STATUSES, sendOrderEmail, type OrderEmailKind } from "../utils/email.js"
-import { MEALS_PER_DAY } from "./menu.js"
+import { MAX_ITEMS_PER_MEAL } from "../validators/adminSchema.js"
 import {
   dayOfWeekEnumSchema,
   updateOrderStatusSchema,
@@ -108,6 +108,7 @@ adminRouter.get("/schedule", requireRole(["ADMIN", "STAFF"]), async (c) => {
         dailyQuota: dailyMenuSchedules.dailyQuota,
         soldCount: dailyMenuSchedules.soldCount,
         isFeatured: dailyMenuSchedules.isFeatured,
+        mealTime: dailyMenuSchedules.mealTime,
         item: {
           id: menuItems.id,
           name: menuItems.name,
@@ -235,22 +236,25 @@ adminRouter.put("/schedule/:day", requireRole(["ADMIN", "STAFF"]), async (c) => 
   const { assignments } = parseResult.data
   const user = c.get("user")!
 
-  if (assignments.length > MEALS_PER_DAY) {
+  const perMeal = new Map<string, number>()
+  for (const a of assignments) perMeal.set(a.mealTime, (perMeal.get(a.mealTime) ?? 0) + 1)
+  const full = [...perMeal.entries()].find(([, n]) => n > MAX_ITEMS_PER_MEAL)
+  if (full) {
     return c.json(
       {
         error: {
           code: "TOO_MANY_MEALS",
-          message: `Choose up to ${MEALS_PER_DAY} meals for a day`,
+          message: `Choose up to ${MAX_ITEMS_PER_MEAL} dishes for ${full[0].toLowerCase()}`,
           details: null,
         },
       },
       422,
     )
   }
-  if (new Set(assignments.map((a) => a.menuItemId)).size !== assignments.length) {
+  if (new Set(assignments.map((a) => `${a.mealTime}:${a.menuItemId}`)).size !== assignments.length) {
     return c.json(
       {
-        error: { code: "DUPLICATE_MEAL", message: "The same dish is chosen twice for this day", details: null },
+        error: { code: "DUPLICATE_MEAL", message: "The same dish is chosen twice for one meal", details: null },
       },
       422,
     )
@@ -282,6 +286,7 @@ adminRouter.put("/schedule/:day", requireRole(["ADMIN", "STAFF"]), async (c) => 
             dailyQuota: a.dailyQuota ?? 100,
             soldCount: existingSoldCountMap.get(a.menuItemId) || 0,
             isFeatured: a.isFeatured ?? false,
+            mealTime: a.mealTime,
           })),
         )
       }
@@ -309,6 +314,7 @@ adminRouter.put("/schedule/:day", requireRole(["ADMIN", "STAFF"]), async (c) => 
           dailyQuota: dailyMenuSchedules.dailyQuota,
           soldCount: dailyMenuSchedules.soldCount,
           isFeatured: dailyMenuSchedules.isFeatured,
+          mealTime: dailyMenuSchedules.mealTime,
           itemName: menuItems.name,
           basePriceBdt: menuItems.basePriceBdt,
         })
