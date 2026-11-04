@@ -7,8 +7,8 @@
  *   EMAIL_FROM_NAME  optional, defaults to "Banglar Biriyani"
  *   SITE_URL         optional, defaults to https://banglarbiriyani.netlify.app
  *
- * If BREVO_API_KEY or EMAIL_FROM is missing, emails are skipped silently.
- * A failed email never fails the order or the status change.
+ * If BREVO_API_KEY or EMAIL_FROM is missing, emails are skipped and one warning is logged.
+ * A failed email never fails the order or the status change: errors are logged, not thrown.
  */
 
 export type OrderEmailKind = "PLACED" | "CONFIRMED" | "PREPARING" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED"
@@ -103,13 +103,26 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderEmailData, sit
   return { subject, html, text }
 }
 
+// A missing setting is reported once per start, so a misconfigured live site leaves a trace
+// in the logs instead of silently sending nothing. Only the setting names are logged.
+let warnedAboutMissingSettings = false
+
 async function send(to: string, kind: OrderEmailKind, order: OrderEmailData): Promise<void> {
   const apiKey = process.env.BREVO_API_KEY
   const from = process.env.EMAIL_FROM
-  if (!apiKey || !from || !to) return
-  const siteUrl = process.env.SITE_URL || "https://banglarbiriyani.netlify.app"
-  const { subject, html, text } = buildOrderEmail(kind, order, siteUrl)
+  if (!apiKey || !from || !to) {
+    if ((!apiKey || !from) && !warnedAboutMissingSettings) {
+      warnedAboutMissingSettings = true
+      const missing = [!apiKey && "BREVO_API_KEY", !from && "EMAIL_FROM"].filter(Boolean).join(" and ")
+      console.warn(`[email] ${missing} not set, so order emails are skipped.`)
+    }
+    return
+  }
+  // Everything below, including building the message, stays inside the try: whatever goes
+  // wrong must never reach the caller and break an order that is already saved.
   try {
+    const siteUrl = process.env.SITE_URL || "https://banglarbiriyani.netlify.app"
+    const { subject, html, text } = buildOrderEmail(kind, order, siteUrl)
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: { "api-key": apiKey, "content-type": "application/json", accept: "application/json" },
@@ -122,9 +135,9 @@ async function send(to: string, kind: OrderEmailKind, order: OrderEmailData): Pr
       }),
       signal: AbortSignal.timeout(8000),
     })
-    if (!res.ok) console.error(`[email] Brevo ${res.status} for ${order.orderNumber}:`, await res.text())
+    if (!res.ok) console.error(`[email] Brevo ${res.status} for ${order.orderNumber} (${kind}):`, await res.text())
   } catch (err) {
-    console.error(`[email] failed for ${order.orderNumber}:`, err)
+    console.error(`[email] ${kind} failed for ${order?.orderNumber}:`, err)
   }
 }
 
