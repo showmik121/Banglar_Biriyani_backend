@@ -26,10 +26,10 @@ export const updateOrderStatusSchema = z.object({
   notes: z.string().trim().max(500).optional(),
 })
 
-export const MEAL_TIMES = ["BREAKFAST", "LUNCH", "DINNER"] as const
+export const MEAL_TIMES = ["LUNCH", "DINNER"] as const
 export type MealTime = (typeof MEAL_TIMES)[number]
 /** Most dishes an admin can put in one meal (e.g. Monday lunch) */
-export const MAX_ITEMS_PER_MEAL = 6
+export const MAX_ITEMS_PER_MEAL = 12
 
 export const scheduleItemInputSchema = z.object({
   menuItemId: z.number().int().positive("menuItemId must be a positive integer"),

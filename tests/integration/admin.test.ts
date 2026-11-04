@@ -180,7 +180,7 @@ describe("Banglar Biriyani Admin API & RBAC Test Suite (TDD)", () => {
       assert.equal(updatedItem1.specialPriceBdt, 420)
     })
 
-    test("PUT /api/admin/schedule/:day saves breakfast, lunch and dinner, at most 6 per meal", async () => {
+    test("PUT /api/admin/schedule/:day saves lunch and dinner, at most 12 per meal", async () => {
       const catRes = await app.request("http://localhost/api/admin/schedule", {
         headers: { Cookie: adminCookie },
       })
@@ -192,24 +192,23 @@ describe("Banglar Biriyani Admin API & RBAC Test Suite (TDD)", () => {
           body: JSON.stringify({ assignments }),
         })
 
-      const tooMany = await put(catalog.slice(0, 7).map((i: any) => ({ menuItemId: i.id, mealTime: "LUNCH" })))
+      const tooMany = await put(catalog.slice(0, 13).map((i: any) => ({ menuItemId: i.id, mealTime: "LUNCH" })))
       assert.equal(tooMany.status, 422)
       assert.equal((await tooMany.json()).error.code, "TOO_MANY_MEALS")
 
       // The same dish can be served at lunch and at dinner
       const ok = await put([
-        { menuItemId: catalog[0].id, mealTime: "BREAKFAST" },
         { menuItemId: catalog[1].id, mealTime: "LUNCH" },
         { menuItemId: catalog[1].id, mealTime: "DINNER" },
       ])
       assert.equal(ok.status, 200)
       const saved = (await ok.json()).data.assignments
-      assert.deepEqual(saved.map((a: any) => a.mealTime).sort(), ["BREAKFAST", "DINNER", "LUNCH"])
+      assert.deepEqual(saved.map((a: any) => a.mealTime).sort(), ["DINNER", "LUNCH"])
 
       const menu = await (await app.request("http://localhost/api/menu")).json()
       assert.deepEqual(
         menu.data.days.THURSDAY.map((m: any) => m.mealTime),
-        ["BREAKFAST", "LUNCH", "DINNER"],
+        ["LUNCH", "DINNER"],
       )
       assert.ok(Array.isArray(menu.data.items) && menu.data.items.length > 0)
     })

@@ -153,12 +153,15 @@ export async function getMealsForDay(day: ValidDay) {
     .where(and(eq(dailyMenuSchedules.dayOfWeek, day), eq(menuItems.isAvailable, true)))
     .orderBy(desc(dailyMenuSchedules.isFeatured), asc(dailyMenuSchedules.id))
 
+  // Only lunch and dinner are served; older breakfast rows are ignored
+  const meals = rows.filter((r) => (MEAL_TIMES as readonly string[]).includes(r.mealTime))
+
   const order = (m: string) => {
     const i = (MEAL_TIMES as readonly string[]).indexOf(m)
     return i === -1 ? 1 : i
   }
   const perMeal = new Map<string, number>()
-  const capped = rows
+  const capped = meals
     .sort((a, b) => order(a.mealTime) - order(b.mealTime))
     .filter((r) => {
       const n = (perMeal.get(r.mealTime) ?? 0) + 1
