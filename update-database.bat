@@ -6,6 +6,8 @@ if not exist .env (
   pause
   exit /b 1
 )
-call npm run db:upgrade
+call npm run db:upgrade > update-log.txt 2>&1
+echo EXIT=%ERRORLEVEL%>> update-log.txt
+type update-log.txt
 echo.
 pause

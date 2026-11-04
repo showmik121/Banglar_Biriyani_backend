@@ -56,11 +56,8 @@ export const users = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("users_email_idx").on(table.email),
-    index("users_phone_idx").on(table.phone),
-    index("users_role_idx").on(table.role),
-  ],
+  // email and phone are already indexed by their unique constraints
+  (table) => [index("users_role_idx").on(table.role)],
 )
 
 // Sessions Table
@@ -232,8 +229,8 @@ export const orders = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
-    index("orders_num_created_idx").on(table.orderNumber, table.createdAt),
     index("orders_user_id_idx").on(table.userId),
+    index("orders_delivery_zone_idx").on(table.deliveryZoneId),
     index("orders_status_created_idx").on(table.status, table.createdAt.desc()),
   ],
 )
@@ -255,8 +252,17 @@ export const orderItems = pgTable(
     unitPriceBdt: integer("unit_price_bdt").notNull(),
     lineTotalBdt: integer("line_total_bdt").notNull(),
   },
-  (table) => [index("order_items_order_id_idx").on(table.orderId)],
+  (table) => [
+    index("order_items_order_id_idx").on(table.orderId),
+    index("order_items_menu_item_idx").on(table.menuItemId),
+  ],
 )
+
+// Record of the one-time steps in src/db/upgrade.ts that already ran
+export const schemaUpgrades = pgTable("schema_upgrades", {
+  name: text("name").primaryKey(),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).defaultNow().notNull(),
+})
 
 // ==========================================
 // 5. Relations
