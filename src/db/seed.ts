@@ -37,6 +37,21 @@ async function seed() {
       }
     }
 
+    // The kitchen staff and customer accounts and the demo order exist only for
+    // automated tests (SEED_DEMO_DATA=true). On the live site the admin does everything.
+    const withDemo = process.env.SEED_DEMO_DATA === "true"
+    // A real admin password is required. This repository is on GitHub, so the demo password
+    // below must never end up on a real database: it is only for the test database (SEED_DEMO_DATA=true).
+    // Checked before anything is erased, so a missing password can never leave an empty database.
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || (withDemo ? "Admin@1234" : "")
+    if (!adminPassword || (!withDemo && adminPassword.length < 10)) {
+      console.error(
+        "STOP: set SEED_ADMIN_PASSWORD in your .env file (at least 10 characters). " +
+          "The seed will not create an admin with a built-in demo password.",
+      )
+      process.exit(1)
+    }
+
     // 1. Clean existing data in reverse order of foreign keys
     console.log("🧹 Cleaning existing tables...")
     await db.execute(sql`
@@ -45,18 +60,9 @@ async function seed() {
 
     // 2. Seed Authenticated Users (RBAC) idempotently with bcryptjs (cost 12)
     console.log("👤 Seeding the admin account...")
-    // Set SEED_ADMIN_PASSWORD in .env for a real launch.
-    // The demo passwords below are only for local testing.
-    const adminPassword = process.env.SEED_ADMIN_PASSWORD || "Admin@1234"
     const staffPassword = process.env.SEED_STAFF_PASSWORD || "Staff@1234"
-    if (!process.env.SEED_ADMIN_PASSWORD) {
-      console.warn("⚠️  Using the demo admin password. Set SEED_ADMIN_PASSWORD before going live.")
-    }
     const adminPasswordHash = await bcrypt.hash(adminPassword, 12)
     const staffPasswordHash = await bcrypt.hash(staffPassword, 12)
-    // The kitchen staff and customer accounts and the demo order exist only for
-    // automated tests (SEED_DEMO_DATA=true). On the live site the admin does everything.
-    const withDemo = process.env.SEED_DEMO_DATA === "true"
     const customerPasswordHash = await bcrypt.hash("Customer@1234", 12)
 
     const testUsersData = [

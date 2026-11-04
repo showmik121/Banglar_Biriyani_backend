@@ -20,7 +20,9 @@ export const signupSchema = z.object({
     .refine((val) => /^01[3-9]\d{8}$/.test(val), "Enter an 11-digit mobile number starting with 01"),
   password: z
     .string({ error: "Choose a password" })
-    .min(8, "Use at least 8 characters for your password"),
+    .min(8, "Use at least 8 characters for your password")
+    // bcrypt only reads the first 72 characters, so a longer password would be silently cut short
+    .max(72, "Use at most 72 characters for your password"),
   defaultAddress: z.string().trim().max(300).optional().nullable(),
 })
 
@@ -29,7 +31,11 @@ export const loginSchema = z.object({
     .string({ error: "Email or phone number is required" })
     .trim()
     .min(3, "Identifier must be at least 3 characters"),
-  password: z.string({ error: "Password is required" }).min(1, "Password is required"),
+  password: z
+    .string({ error: "Password is required" })
+    .min(1, "Password is required")
+    // Generous cap (older passwords may be long) that still keeps huge values away from bcrypt
+    .max(200, "Password is too long"),
 })
 
 export const updateProfileSchema = z.object({

@@ -14,16 +14,35 @@ export interface JwtSessionPayload {
   iat?: number
 }
 
+const DEV_JWT_SECRET = "banglar-biriyani-dev-jwt-secret-key-must-be-changed-in-prod"
+const MIN_PRODUCTION_JWT_SECRET_LENGTH = 32
+// Values copied from documentation that must never sign real sessions.
+const KNOWN_PLACEHOLDER_SECRETS = new Set([DEV_JWT_SECRET, "change-me-to-a-long-random-string"])
+
+/** True only for local development and tests. Anything else is treated as the live site. */
+export function isDevOrTestEnv(): boolean {
+  const env = process.env.NODE_ENV
+  return env === "development" || env === "test"
+}
+
 export function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET
   if (!secret) {
     // The built-in key is only for local development and tests. Anywhere else
     // (production, or NODE_ENV forgotten) a missing secret stops the server instead.
-    const env = process.env.NODE_ENV
-    if (env !== "development" && env !== "test") {
+    if (!isDevOrTestEnv()) {
       throw new Error("CRITICAL SECURITY ERROR: JWT_SECRET environment variable is missing!")
     }
-    return "banglar-biriyani-dev-jwt-secret-key-must-be-changed-in-prod"
+    return DEV_JWT_SECRET
+  }
+  // On the live site a short or copied-from-the-docs secret is as bad as none.
+  if (
+    !isDevOrTestEnv() &&
+    (secret.length < MIN_PRODUCTION_JWT_SECRET_LENGTH || KNOWN_PLACEHOLDER_SECRETS.has(secret))
+  ) {
+    throw new Error(
+      `CRITICAL SECURITY ERROR: JWT_SECRET is too weak. Use at least ${MIN_PRODUCTION_JWT_SECRET_LENGTH} random characters (see .env.example).`,
+    )
   }
   return secret
 }
@@ -81,18 +100,26 @@ export async function verifySessionToken(token: string): Promise<JwtSessionPaylo
 }
 
 /**
- * Set the bb_session cookie on Hono context (HttpOnly, SameSite=Lax, Path=/, Secure in prod over HTTPS, 7-day max-age)
+ * Cookie attributes for bb_session: HttpOnly, SameSite=Lax, Path=/.
+ * On the live site the cookie is always Secure. The site is only served over HTTPS, and
+ * guessing the scheme behind a proxy (Netlify -> Supabase) could silently drop the flag.
  */
-export function setSessionCookie(c: Context, token: string) {
-  const isHttps = c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https"
-  const isProd = process.env.NODE_ENV === "production"
-  const secure = isProd && isHttps
-
-  setCookie(c, SESSION_COOKIE_NAME, token, {
+export function sessionCookieOptions() {
+  return {
     path: "/",
     httpOnly: true,
-    secure,
-    sameSite: "Lax",
+    // Fail closed: only local development and tests get a cookie without Secure
+    secure: !isDevOrTestEnv(),
+    sameSite: "Lax" as const,
+  }
+}
+
+/**
+ * Set the bb_session cookie on Hono context (7-day max-age)
+ */
+export function setSessionCookie(c: Context, token: string) {
+  setCookie(c, SESSION_COOKIE_NAME, token, {
+    ...sessionCookieOptions(),
     maxAge: SESSION_MAX_AGE_SECONDS,
   })
 }
@@ -101,16 +128,7 @@ export function setSessionCookie(c: Context, token: string) {
  * Clear the bb_session cookie on Hono context
  */
 export function clearSessionCookie(c: Context) {
-  const isHttps = c.req.url.startsWith("https://") || c.req.header("x-forwarded-proto") === "https"
-  const isProd = process.env.NODE_ENV === "production"
-  const secure = isProd && isHttps
-
-  deleteCookie(c, SESSION_COOKIE_NAME, {
-    path: "/",
-    httpOnly: true,
-    secure,
-    sameSite: "Lax",
-  })
+  deleteCookie(c, SESSION_COOKIE_NAME, sessionCookieOptions())
 }
 
 /**

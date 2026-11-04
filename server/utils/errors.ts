@@ -5,6 +5,9 @@
  * message is shown to make problems easy to find.
  */
 export function errorDetails(error: unknown): string | null {
-  if (process.env.NODE_ENV === "production") return null
+  // Fail closed: only show the message when NODE_ENV is explicitly development or test.
+  // A forgotten NODE_ENV on the live site must not leak database messages.
+  const env = process.env.NODE_ENV
+  if (env !== "development" && env !== "test") return null
   return error instanceof Error ? error.message : String(error)
 }

@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto"
 import { Hono } from "hono"
 import { eq, and, inArray, sql } from "drizzle-orm"
 import {
@@ -24,6 +25,10 @@ export const ordersRouter = new Hono()
 
 // Stops people guessing order number + phone combinations: 20 wrong lookups per 15 minutes per IP
 const lookupFailures = createFailureLimiter(20, 15 * 60 * 1000)
+// ...and 5 wrong phone numbers per order number, whatever address they come from, so a
+// spread-out or spoofed-address attack cannot keep guessing the phone for one known order.
+const MAX_WRONG_PHONES_PER_ORDER = 5
+const orderLookupFailures = createFailureLimiter(MAX_WRONG_PHONES_PER_ORDER, 15 * 60 * 1000)
 
 function generateOrderNumber(): string {
   const now = new Date()
@@ -31,7 +36,8 @@ function generateOrderNumber(): string {
   const month = String(now.getMonth() + 1).padStart(2, "0")
   const day = String(now.getDate()).padStart(2, "0")
   const millis = String(now.getMilliseconds()).padStart(3, "0")
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000)
+  // Cryptographic randomness: order numbers must not be predictable
+  const randomSuffix = randomInt(1000, 10000)
   return `BB-${year}${month}${day}-${millis}${randomSuffix}`
 }
 
@@ -310,15 +316,21 @@ ordersRouter.post(
       })
 
       // Confirmation email for signed-in customers (never blocks or fails the order)
-      const buyer = c.get("user")
-      await sendOrderEmail(buyer?.email, "PLACED", {
-        orderNumber: result.order.orderNumber,
-        customerName: result.order.customerName,
-        customerAddress: result.order.customerAddress,
-        totalBdt: result.order.totalBdt,
-        paymentMethod: result.order.paymentMethod,
-        items: result.items.map((i: any) => ({ name: i.itemNameSnapshot, quantity: i.quantity, lineTotalBdt: i.lineTotalBdt })),
-      })
+      // The order is already saved here, so nothing about the email (not even building its
+      // data) may turn this into an error response: the customer would retry and order twice.
+      try {
+        const buyer = c.get("user")
+        await sendOrderEmail(buyer?.email, "PLACED", {
+          orderNumber: result.order.orderNumber,
+          customerName: result.order.customerName,
+          customerAddress: result.order.customerAddress,
+          totalBdt: result.order.totalBdt,
+          paymentMethod: result.order.paymentMethod,
+          items: result.items.map((i: any) => ({ name: i.itemNameSnapshot, quantity: i.quantity, lineTotalBdt: i.lineTotalBdt })),
+        })
+      } catch (emailErr) {
+        console.error("[email] order confirmation skipped:", emailErr)
+      }
 
       c.header("Location", `/api/orders/${result.order.orderNumber}`)
       return c.json(
@@ -475,7 +487,11 @@ ordersRouter.get("/:orderNumber", optionalAuth, async (c) => {
     const user = c.get("user")
     const ip = getClientIp(c)
 
-    const wait = lookupFailures.retryAfterSeconds(ip)
+    // Signed-in visitors are checked against their own account, so only phone guesses count
+    const wait = Math.max(
+      lookupFailures.retryAfterSeconds(ip),
+      user ? 0 : orderLookupFailures.retryAfterSeconds(orderNumber),
+    )
     if (wait > 0) {
       c.header("Retry-After", String(wait))
       return c.json(
@@ -512,6 +528,7 @@ ordersRouter.get("/:orderNumber", optionalAuth, async (c) => {
 
     if (!order) {
       lookupFailures.recordFailure(ip)
+      if (!user && found) orderLookupFailures.recordFailure(orderNumber)
       return c.json(
         {
           error: {

@@ -1,4 +1,5 @@
 import { Hono } from "hono"
+import { bodyLimit } from "hono/body-limit"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { secureHeaders } from "hono/secure-headers"
@@ -7,6 +8,7 @@ import { ordersRouter } from "./routes/orders.js"
 import { authRouter } from "./routes/auth.js"
 import { adminRouter } from "./routes/admin.js"
 import { adminPromotionsRouter, publicPromotionsRouter } from "./routes/promotions.js"
+import { isAllowedOrigin } from "./utils/cors.js"
 
 // The API itself. Runs the same on Node (server/index.ts) and on Supabase
 // Edge Functions (edge/entry.ts).
@@ -17,22 +19,37 @@ app.use("*", logger())
 app.use("*", secureHeaders())
 
 // Which websites may call the API from a browser. The live site reaches the API through
-// its own address (Netlify forwards /api), so it needs nothing here. Add other sites to the
-// ALLOWED_ORIGINS secret, separated by commas (for example https://www.client-domain.com).
-const allowedOrigins = () =>
-  (process.env.ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean)
-const isLocalOrigin = (o: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)
-
+// its own address (Netlify forwards /api), so it needs nothing here. The shop's SITE_URL is
+// always allowed; add other sites to the ALLOWED_ORIGINS secret, separated by commas
+// (for example https://www.client-domain.com). See server/utils/cors.ts.
 app.use(
   "*",
   cors({
-    origin: (origin) => (origin && (allowedOrigins().includes(origin) || isLocalOrigin(origin)) ? origin : ""),
+    origin: (origin) => (isAllowedOrigin(origin) ? origin : ""),
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
+  }),
+)
+
+// Every request body here is a small JSON document. Refuse anything bigger before it is
+// read into memory, so a huge upload cannot slow the API down.
+const MAX_REQUEST_BODY_BYTES = 256 * 1024
+app.use(
+  "/api/*",
+  bodyLimit({
+    maxSize: MAX_REQUEST_BODY_BYTES,
+    onError: (c) =>
+      c.json(
+        {
+          error: {
+            code: "PAYLOAD_TOO_LARGE",
+            message: "The request is too large",
+            details: null,
+          },
+        },
+        413,
+      ),
   }),
 )
 

@@ -9,6 +9,22 @@ interface RateLimitRecord {
 // In-memory sliding/fixed window rate limit store
 const ipStore = new Map<string, RateLimitRecord>()
 
+// Upper bound for every limiter store. Visitors can invent endless addresses (a typed
+// x-forwarded-for) or account names, so without a cap the maps could grow until memory runs out.
+export const MAX_TRACKED_KEYS = 10_000
+
+/** Frees space before a new key is added: drops expired entries first, then the oldest one. */
+function makeRoom<T>(store: Map<string, T>, isExpired: (record: T) => boolean): void {
+  if (store.size < MAX_TRACKED_KEYS) return
+  for (const [key, record] of store) {
+    if (isExpired(record)) store.delete(key)
+  }
+  if (store.size >= MAX_TRACKED_KEYS) {
+    const oldestKey = store.keys().next().value
+    if (oldestKey !== undefined) store.delete(oldestKey)
+  }
+}
+
 export interface RateLimitOptions {
   windowMs?: number // Window in milliseconds (default 15 minutes)
   max?: number // Max allowed requests in the window (default 10)
@@ -62,6 +78,7 @@ export function orderRateLimiter(options: RateLimitOptions = {}) {
 
     if (!record || now - record.firstRequestTime > windowMs) {
       // Start a new window
+      makeRoom(ipStore, (r) => now - r.firstRequestTime > windowMs)
       record = {
         count: 1,
         firstRequestTime: now,
@@ -133,8 +150,20 @@ export function createFailureLimiter(max: number, windowMs: number) {
     },
     recordFailure(ip: string) {
       const rec = current(ip)
-      if (rec) rec.count += 1
-      else store.set(ip, { count: 1, first: Date.now() })
+      if (rec) {
+        rec.count += 1
+        return
+      }
+      makeRoom(store, (r) => Date.now() - r.first > windowMs)
+      store.set(ip, { count: 1, first: Date.now() })
+    },
+    /** Forget one key, for example after a successful login. */
+    clear(ip: string) {
+      store.delete(ip)
+    },
+    /** Number of tracked keys (used by tests to check the memory cap). */
+    size(): number {
+      return store.size
     },
     reset() {
       store.clear()

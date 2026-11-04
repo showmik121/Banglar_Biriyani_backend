@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { eq, or, and, ne, ilike } from "drizzle-orm"
+import { eq, or, and, ne, sql } from "drizzle-orm"
 import crypto from "crypto"
 import { db, users, sessions, auditLogs } from "../../src/db/index.js"
 import {
@@ -18,59 +18,22 @@ import { errorDetails } from "../utils/errors.js"
 
 export const authRouter = new Hono()
 
-// Failed login attempt tracking store (per IP, 15 min window, max 5 failed attempts)
-interface FailedLoginRecord {
-  count: number
-  firstFailedTime: number
-  lastFailedTime: number
-}
-
-const failedLoginStore = new Map<string, FailedLoginRecord>()
+// Failed login attempts per IP: max 5 in a 15 minute window (the store is size-capped).
 const FAILED_LOGIN_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 const MAX_FAILED_LOGIN_ATTEMPTS = 5
+const ipFailures = createFailureLimiter(MAX_FAILED_LOGIN_ATTEMPTS, FAILED_LOGIN_WINDOW_MS)
 // Also count wrong passwords per account, so guessing one account's password stays slow
 // even when the visitor changes address between tries.
-const accountFailures = createFailureLimiter(10, 15 * 60 * 1000)
+const accountFailures = createFailureLimiter(10, FAILED_LOGIN_WINDOW_MS)
 
-function checkLoginRateLimit(ip: string): { isBlocked: boolean; retryAfterSeconds: number } {
-  const record = failedLoginStore.get(ip)
-  if (!record) return { isBlocked: false, retryAfterSeconds: 0 }
+// Exact, case-insensitive email match. ilike would treat "%" and "_" typed by a visitor as
+// wildcards (so "%@gmail.com" matched somebody else's account and "_" matched any character).
+const emailEquals = (lowerCaseEmail: string) => sql`lower(${users.email}) = ${lowerCaseEmail}`
 
-  const now = Date.now()
-  if (now - record.firstFailedTime > FAILED_LOGIN_WINDOW_MS) {
-    failedLoginStore.delete(ip)
-    return { isBlocked: false, retryAfterSeconds: 0 }
-  }
-
-  if (record.count >= MAX_FAILED_LOGIN_ATTEMPTS) {
-    const retryAfterSeconds = Math.ceil(
-      (record.firstFailedTime + FAILED_LOGIN_WINDOW_MS - now) / 1000,
-    )
-    return { isBlocked: true, retryAfterSeconds }
-  }
-
-  return { isBlocked: false, retryAfterSeconds: 0 }
-}
-
-function recordFailedLogin(ip: string) {
-  const now = Date.now()
-  const record = failedLoginStore.get(ip)
-
-  if (!record || now - record.firstFailedTime > FAILED_LOGIN_WINDOW_MS) {
-    failedLoginStore.set(ip, {
-      count: 1,
-      firstFailedTime: now,
-      lastFailedTime: now,
-    })
-  } else {
-    record.count += 1
-    record.lastFailedTime = now
-  }
-}
-
-function clearFailedLogins(ip: string) {
-  failedLoginStore.delete(ip)
-}
+// An unknown account still costs one bcrypt check, so the response time does not reveal
+// whether an email or phone number is registered.
+let dummyHashPromise: Promise<string> | null = null
+const getDummyHash = () => (dummyHashPromise ??= hashPassword("timing-equaliser-not-a-real-password"))
 
 function toSafeUser(user: typeof users.$inferSelect): SafeUser {
   return {
@@ -136,7 +99,7 @@ authRouter.post("/signup", signupLimiter, async (c) => {
       .from(users)
       .where(
         normalizedEmail
-          ? or(ilike(users.email, normalizedEmail), eq(users.phone, normalizedPhone))
+          ? or(emailEquals(normalizedEmail), eq(users.phone, normalizedPhone))
           : eq(users.phone, normalizedPhone),
       )
       .limit(1)
@@ -241,8 +204,8 @@ authRouter.post("/login", async (c) => {
   const ip = getClientIp(c)
 
   // 1. Check rate limit on failed attempts
-  const { isBlocked, retryAfterSeconds } = checkLoginRateLimit(ip)
-  if (isBlocked) {
+  const retryAfterSeconds = ipFailures.retryAfterSeconds(ip)
+  if (retryAfterSeconds > 0) {
     c.header("Retry-After", String(retryAfterSeconds))
     return c.json(
       {
@@ -315,7 +278,7 @@ authRouter.post("/login", async (c) => {
       .from(users)
       .where(
         or(
-          ilike(users.email, normalizedEmail),
+          emailEquals(normalizedEmail),
           eq(users.phone, normalizedPhone),
           eq(users.phone, normalizedIdentifier),
         ),
@@ -323,7 +286,8 @@ authRouter.post("/login", async (c) => {
       .limit(1)
 
     if (matchedUsers.length === 0) {
-      recordFailedLogin(ip)
+      await verifyPassword(password, await getDummyHash())
+      ipFailures.recordFailure(ip)
       accountFailures.recordFailure(accountKey)
       return c.json(
         {
@@ -339,24 +303,11 @@ authRouter.post("/login", async (c) => {
 
     const user = matchedUsers[0]
 
-    // Verify account active
-    if (!user.isActive) {
-      return c.json(
-        {
-          error: {
-            code: "ACCOUNT_DISABLED",
-            message: "This account has been deactivated. Please contact support.",
-            details: null,
-          },
-        },
-        403,
-      )
-    }
-
-    // Verify password hash
+    // Verify password hash first, so a deactivated account is only revealed to someone
+    // who knows its password (otherwise anyone could probe which accounts exist and are off).
     const isPasswordValid = await verifyPassword(password, user.passwordHash)
     if (!isPasswordValid) {
-      recordFailedLogin(ip)
+      ipFailures.recordFailure(ip)
       accountFailures.recordFailure(accountKey)
       return c.json(
         {
@@ -370,8 +321,22 @@ authRouter.post("/login", async (c) => {
       )
     }
 
+    // Correct password but the account was switched off by the shop
+    if (!user.isActive) {
+      return c.json(
+        {
+          error: {
+            code: "ACCOUNT_DISABLED",
+            message: "This account has been deactivated. Please contact support.",
+            details: null,
+          },
+        },
+        403,
+      )
+    }
+
     // Login succeeded - clear failed attempts
-    clearFailedLogins(ip)
+    ipFailures.clear(ip)
 
     // Create session in Neon
     const sessionId = crypto.randomUUID()
