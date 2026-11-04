@@ -39,6 +39,8 @@ export const orderItemSchema = z.object({
     .int("quantity must be an integer")
     .min(1, "quantity must be at least 1")
     .max(50, "quantity cannot exceed 50 per item"),
+  // Which meal of the day this dish is for (the same dish can be on lunch and dinner)
+  mealTime: z.enum(["LUNCH", "DINNER"]).optional(),
 })
 
 export const createOrderSchema = z

@@ -13,6 +13,7 @@ import { DELIVERY_FEE_BDT, computeTotal, evaluateOffer } from "../utils/pricing.
 import { createOrderSchema } from "../validators/orderSchema.js"
 import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
+import { dhakaNow, isMealOpen, mealForHour, mealWindowsEnabled, windowText, type MealName } from "../utils/mealWindows.js"
 import { samePhone } from "../utils/phone.js"
 import { sendOrderEmail } from "../utils/email.js"
 import { errorDetails } from "../utils/errors.js"
@@ -102,15 +103,43 @@ ordersRouter.post(
           )
           .for("update")
 
-        const scheduleLookup = new Map(schedules.map((s) => [s.menuItemId, s]))
+        // The same dish can be on both lunch and dinner, so schedules are found by dish AND meal.
+        // An older website that does not send the meal gets the dish's only meal, or the one that fits the time of day.
+        const nowDhaka = dhakaNow()
+        const mealsOfItem = new Map<number, string[]>()
+        for (const s of schedules) mealsOfItem.set(s.menuItemId, [...(mealsOfItem.get(s.menuItemId) ?? []), s.mealTime])
+        const mealOf = (reqItem: { menuItemId: number; mealTime?: MealName }): MealName => {
+          if (reqItem.mealTime) return reqItem.mealTime
+          const meals = mealsOfItem.get(reqItem.menuItemId) ?? []
+          if (meals.length === 1 && (meals[0] === "LUNCH" || meals[0] === "DINNER")) return meals[0]
+          return mealForHour(nowDhaka.hour)
+        }
+        const scheduleKey = (menuItemId: number, meal: string) => `${menuItemId}:${meal}`
+        const scheduleLookup = new Map(schedules.map((s) => [scheduleKey(s.menuItemId, s.mealTime), s]))
+
+        // Same-day orders are taken only in each meal's hours (pre-orders for other days are not limited)
+        if (mealWindowsEnabled() && data.scheduledDay === nowDhaka.day) {
+          for (const reqItem of data.items) {
+            const meal = mealOf(reqItem)
+            if (!isMealOpen(meal, nowDhaka.hour)) {
+              throw new Error(
+                `MEAL_CLOSED: ${meal === "LUNCH" ? "Lunch" : "Dinner"} orders for today are taken from ${windowText(meal)} (Bangladesh time)`,
+              )
+            }
+          }
+        }
 
         // 3. Aggregate requested quantities per item ID to prevent quota evasion
-        const requestedQuantities = new Map<number, number>()
+        const requestedQuantities = new Map<string, { menuItemId: number; meal: MealName; qty: number }>()
         for (const reqItem of data.items) {
-          requestedQuantities.set(
-            reqItem.menuItemId,
-            (requestedQuantities.get(reqItem.menuItemId) || 0) + reqItem.quantity,
-          )
+          const meal = mealOf(reqItem)
+          const key = scheduleKey(reqItem.menuItemId, meal)
+          const prev = requestedQuantities.get(key)
+          requestedQuantities.set(key, {
+            menuItemId: reqItem.menuItemId,
+            meal,
+            qty: (prev?.qty ?? 0) + reqItem.quantity,
+          })
         }
 
         // 4. Validate every requested item exists, is available, and matches schedule
@@ -137,7 +166,7 @@ ordersRouter.post(
           }
 
           // Lookup optional day schedule for special price override or quota
-          const daySchedule = scheduleLookup.get(reqItem.menuItemId)
+          const daySchedule = scheduleLookup.get(scheduleKey(reqItem.menuItemId, mealOf(reqItem)))
 
           // Authoritative price calculation:
           // If scheduled on requested day with specialPriceBdt, use that; otherwise basePriceBdt
@@ -156,9 +185,9 @@ ordersRouter.post(
         }
 
         // 5. Atomic Quota Enforcement: Ensure total ordered portions do not exceed remaining stock
-        for (const [menuItemId, totalQty] of requestedQuantities.entries()) {
+        for (const { menuItemId, meal, qty: totalQty } of requestedQuantities.values()) {
           const dbItem = itemLookup.get(menuItemId)!
-          const daySchedule = scheduleLookup.get(menuItemId)
+          const daySchedule = scheduleLookup.get(scheduleKey(menuItemId, meal))
 
           if (
             daySchedule &&
@@ -255,17 +284,19 @@ ordersRouter.post(
         const insertedLineItems = await tx.insert(orderItems).values(itemsToInsert).returning()
 
         // Increment daily_menu_schedules.soldCount inside the transaction for quota tracking (if schedule row exists)
-        for (const item of calculatedLineItems) {
-          if (scheduleLookup.has(item.menuItemId)) {
+        for (const reqItem of data.items) {
+          const meal = mealOf(reqItem)
+          if (scheduleLookup.has(scheduleKey(reqItem.menuItemId, meal))) {
             await tx
               .update(dailyMenuSchedules)
               .set({
-                soldCount: sql`${dailyMenuSchedules.soldCount} + ${item.quantity}`,
+                soldCount: sql`${dailyMenuSchedules.soldCount} + ${reqItem.quantity}`,
               })
               .where(
                 and(
-                  eq(dailyMenuSchedules.menuItemId, item.menuItemId),
+                  eq(dailyMenuSchedules.menuItemId, reqItem.menuItemId),
                   eq(dailyMenuSchedules.dayOfWeek, data.scheduledDay),
+                  eq(dailyMenuSchedules.mealTime, meal),
                 ),
               )
           }
@@ -332,6 +363,7 @@ ordersRouter.post(
         errorMessage.startsWith("ITEM_UNAVAILABLE") ||
         errorMessage.startsWith("ITEM_NOT_SCHEDULED") ||
         errorMessage.startsWith("ZONE_UNAVAILABLE") ||
+        errorMessage.startsWith("MEAL_CLOSED") ||
         errorMessage.startsWith("OFFER_INVALID")
       ) {
         const [code, ...msgParts] = errorMessage.split(": ")
@@ -352,7 +384,7 @@ ordersRouter.post(
           error: {
             code: "ORDER_CREATION_FAILED",
             message: "Failed to create order",
-            details: errorMessage,
+            details: errorDetails(error),
           },
         },
         500,

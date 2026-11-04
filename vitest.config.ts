@@ -6,6 +6,8 @@ export default defineConfig({
     testTimeout: 35000,
     hookTimeout: 35000,
     fileParallelism: false,
+    // Tests place orders at any hour; the meal-hours rule has its own test
+    env: { MEAL_WINDOWS: "off" },
   },
 })
 
