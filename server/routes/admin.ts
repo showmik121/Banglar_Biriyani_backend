@@ -920,27 +920,30 @@ adminRouter.patch("/orders/:id/status", requireRole(["ADMIN", "STAFF"]), async (
       )
     }
 
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        status: data.status,
-        ...(data.notes ? { notes: data.notes } : {}),
-      })
-      .where(eq(orders.id, existingOrder.id))
-      .returning()
+    // The change and its audit entry are saved together: either both happen or neither does
+    const updatedOrder = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(orders)
+        .set({
+          status: data.status,
+          ...(data.notes ? { notes: data.notes } : {}),
+        })
+        .where(eq(orders.id, existingOrder.id))
+        .returning()
 
-    // Record audit log
-    await db.insert(auditLogs).values({
-      actorId: user.id,
-      action: "UPDATE_ORDER_STATUS",
-      entityType: "ORDER",
-      entityId: String(existingOrder.id),
-      metadataJson: JSON.stringify({
-        orderNumber: existingOrder.orderNumber,
-        previousStatus: existingOrder.status,
-        newStatus: data.status,
-        notes: data.notes || null,
-      }),
+      await tx.insert(auditLogs).values({
+        actorId: user.id,
+        action: "UPDATE_ORDER_STATUS",
+        entityType: "ORDER",
+        entityId: String(existingOrder.id),
+        metadataJson: JSON.stringify({
+          orderNumber: existingOrder.orderNumber,
+          previousStatus: existingOrder.status,
+          newStatus: data.status,
+          notes: data.notes || null,
+        }),
+      })
+      return updated
     })
 
     // Tell the customer by email when the status really changed
@@ -1014,27 +1017,30 @@ adminRouter.patch("/orders/:id/verify-payment", requireRole(["ADMIN", "STAFF"]),
     const nextVerified =
       typeof body.isVerified === "boolean" ? body.isVerified : !existingOrder.isPaymentVerified
 
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        isPaymentVerified: nextVerified,
-      })
-      .where(eq(orders.id, existingOrder.id))
-      .returning()
+    // The change and its audit entry are saved together: either both happen or neither does
+    const updatedOrder = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(orders)
+        .set({
+          isPaymentVerified: nextVerified,
+        })
+        .where(eq(orders.id, existingOrder.id))
+        .returning()
 
-    // Audit log
-    await db.insert(auditLogs).values({
-      actorId: user.id,
-      action: "VERIFY_PAYMENT",
-      entityType: "ORDER",
-      entityId: String(existingOrder.id),
-      metadataJson: JSON.stringify({
-        orderNumber: existingOrder.orderNumber,
-        previousVerified: existingOrder.isPaymentVerified,
-        newVerified: nextVerified,
-        paymentMethod: existingOrder.paymentMethod,
-        paymentTrxId: existingOrder.paymentTrxId,
-      }),
+      await tx.insert(auditLogs).values({
+        actorId: user.id,
+        action: "VERIFY_PAYMENT",
+        entityType: "ORDER",
+        entityId: String(existingOrder.id),
+        metadataJson: JSON.stringify({
+          orderNumber: existingOrder.orderNumber,
+          previousVerified: existingOrder.isPaymentVerified,
+          newVerified: nextVerified,
+          paymentMethod: existingOrder.paymentMethod,
+          paymentTrxId: existingOrder.paymentTrxId,
+        }),
+      })
+      return updated
     })
 
     return c.json({
