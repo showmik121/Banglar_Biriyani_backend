@@ -258,6 +258,13 @@ export const orderItems = pgTable(
   ],
 )
 
+// Small settings the owner can change in the admin panel (e.g. lunch and dinner order hours)
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+})
+
 // Record of the one-time steps in src/db/upgrade.ts that already ran
 export const schemaUpgrades = pgTable("schema_upgrades", {
   name: text("name").primaryKey(),

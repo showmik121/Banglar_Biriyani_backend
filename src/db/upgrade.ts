@@ -122,6 +122,31 @@ const steps: { name: string; once?: boolean; run: () => Promise<unknown> }[] = [
       }
     },
   },
+  {
+    // Owner-editable settings (lunch and dinner order hours). Locked like every other table.
+    name: "Settings table for order hours",
+    run: async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key text PRIMARY KEY,
+          value text NOT NULL,
+          updated_at timestamptz NOT NULL DEFAULT now()
+        )
+      `)
+      await db.execute(sql`ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY`)
+      await db.execute(sql`
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            REVOKE ALL ON TABLE app_settings FROM anon;
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            REVOKE ALL ON TABLE app_settings FROM authenticated;
+          END IF;
+        END $$
+      `)
+    },
+  },
 ]
 
 async function main() {

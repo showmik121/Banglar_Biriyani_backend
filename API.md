@@ -24,6 +24,7 @@ changing a meaning) must go under a new `/api/v2` and keep the old one running f
 | `GET /api/offers` | Offers shown on the home page. |
 | `POST /api/offers/validate` | `{ code, subtotalBdt }` gives the discount. 60 tries per 15 minutes per address. |
 | `GET /api/delivery-zones` | Delivery points and delivery time. Delivery is free. |
+| `GET /api/meal-hours` | Hours (Bangladesh time) when same-day lunch and dinner orders are taken: `{ LUNCH: { startHour, endHour }, DINNER: {...} }`. |
 | `POST /api/orders` | Place an order (see below). 10 orders per 15 minutes per address. Sets `Location: /api/orders/<number>`. |
 | `GET /api/orders/:orderNumber?phone=` | Track one order. Needs the phone number used for the order, unless signed in as its owner or staff. 20 wrong tries per 15 minutes per address. |
 | `POST /api/auth/signup` | Create a customer account (name, mobile, password; email is optional). 20 per 15 minutes per address. |
@@ -69,6 +70,7 @@ All need sign-in. `ADMIN` can do everything. `STAFF` can read and handle orders 
 | `PATCH /api/admin/users/:id/role` | ADMIN | Change a role or switch an account on or off. |
 | `GET/POST/PATCH/DELETE /api/admin/offers` | read: ADMIN, STAFF; write: ADMIN | Promo offers. |
 | `GET/POST/PATCH/DELETE /api/admin/delivery-zones` | read: ADMIN, STAFF; write: ADMIN | Delivery points. |
+| `GET/PUT /api/admin/meal-hours` | read: ADMIN, STAFF; change: ADMIN | Lunch and dinner order hours (whole hours, 0-24, end after start). |
 
 ## Rate limits
 

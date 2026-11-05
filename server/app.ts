@@ -8,6 +8,7 @@ import { ordersRouter } from "./routes/orders.js"
 import { authRouter } from "./routes/auth.js"
 import { adminRouter } from "./routes/admin.js"
 import { adminPromotionsRouter, publicPromotionsRouter } from "./routes/promotions.js"
+import { adminSettingsRouter, publicSettingsRouter } from "./routes/settings.js"
 import { isAllowedOrigin } from "./utils/cors.js"
 
 // The API itself. Runs the same on Node (server/index.ts) and on Supabase
@@ -70,7 +71,9 @@ app.route("/api/menu", menuRouter)
 app.route("/api/orders", ordersRouter)
 app.route("/api/admin", adminRouter)
 app.route("/api/admin", adminPromotionsRouter)
+app.route("/api/admin", adminSettingsRouter)
 app.route("/api", publicPromotionsRouter)
+app.route("/api", publicSettingsRouter)
 
 // Standardized 404 Handler following api-design standards
 app.notFound((c) => {

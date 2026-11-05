@@ -15,6 +15,7 @@ import { createOrderSchema } from "../validators/orderSchema.js"
 import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
 import { dhakaNow, isMealOpen, mealForHour, mealWindowsEnabled, windowText, type MealName } from "../utils/mealWindows.js"
+import { getMealWindows } from "../utils/mealSettings.js"
 import { samePhone } from "../utils/phone.js"
 import { sendOrderEmail, sendOwnerOrderAlert } from "../utils/email.js"
 import { errorDetails } from "../utils/errors.js"
@@ -89,6 +90,8 @@ ordersRouter.post(
       const requestedItemIds = data.items.map((i) => i.menuItemId)
 
       // Run order creation and validation inside an ACID transaction
+      // Order hours set by the owner (read before the transaction so it never holds a second connection)
+      const mealWindows = await getMealWindows()
       const result = await db.transaction(async (tx) => {
         // 1. Fetch authoritative menu items
         const dbItems = await tx
@@ -119,7 +122,7 @@ ordersRouter.post(
           if (reqItem.mealTime) return reqItem.mealTime
           const meals = mealsOfItem.get(reqItem.menuItemId) ?? []
           if (meals.length === 1 && (meals[0] === "LUNCH" || meals[0] === "DINNER")) return meals[0]
-          return mealForHour(nowDhaka.hour)
+          return mealForHour(nowDhaka.hour, mealWindows)
         }
         const scheduleKey = (menuItemId: number, meal: string) => `${menuItemId}:${meal}`
         const scheduleLookup = new Map(schedules.map((s) => [scheduleKey(s.menuItemId, s.mealTime), s]))
@@ -128,9 +131,9 @@ ordersRouter.post(
         if (mealWindowsEnabled() && data.scheduledDay === nowDhaka.day) {
           for (const reqItem of data.items) {
             const meal = mealOf(reqItem)
-            if (!isMealOpen(meal, nowDhaka.hour)) {
+            if (!isMealOpen(meal, nowDhaka.hour, mealWindows)) {
               throw new Error(
-                `MEAL_CLOSED: ${meal === "LUNCH" ? "Lunch" : "Dinner"} orders for today are taken from ${windowText(meal)} (Bangladesh time)`,
+                `MEAL_CLOSED: ${meal === "LUNCH" ? "Lunch" : "Dinner"} orders for today are taken from ${windowText(meal, mealWindows)} (Bangladesh time)`,
               )
             }
           }
