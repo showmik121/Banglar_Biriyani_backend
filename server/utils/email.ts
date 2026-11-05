@@ -6,6 +6,8 @@
  *   EMAIL_FROM       a sender address verified in Brevo (e.g. your Gmail)
  *   EMAIL_FROM_NAME  optional, defaults to "Banglar Biriyani"
  *   SITE_URL         optional, defaults to https://banglarbiriyani.netlify.app
+ *   OWNER_NOTIFY_EMAIL  optional: the restaurant's inbox(es), comma separated. Gets an alert for every
+ *                       new order (phone shows it as a normal email notification).
  *
  * If BREVO_API_KEY or EMAIL_FROM is missing, emails are skipped and one warning is logged.
  * A failed email never fails the order or the status change: errors are logged, not thrown.
@@ -152,6 +154,78 @@ export async function sendOrderEmail(
 ): Promise<void> {
   if (!to) return
   const job = send(to, kind, order)
+  const runtime = (globalThis as any).EdgeRuntime
+  if (runtime?.waitUntil) {
+    runtime.waitUntil(job)
+    return
+  }
+  await job
+}
+
+export interface OwnerAlertData extends OrderEmailData {
+  customerPhone: string
+}
+
+/** The "new order" alert for the restaurant owner. Short, so it reads well in a phone notification. */
+export function buildOwnerAlert(order: OwnerAlertData, siteUrl: string) {
+  const items = (order.items ?? []).map((i) => `${i.quantity} x ${i.name}`).join(", ")
+  const subject = `🔔 নতুন অর্ডার ${order.orderNumber} · ${taka(order.totalBdt)}`
+  const payment = order.paymentMethod === "COD" ? "Cash on delivery" : order.paymentMethod
+  const adminUrl = `${siteUrl.replace(/\/$/, "")}/admin`
+  const html = `<!doctype html><html><body style="margin:0;background:#fdf8f3;font-family:Arial,sans-serif;color:#2b1d1a">
+<div style="max-width:520px;margin:0 auto;padding:20px 16px">
+  <div style="background:#d6131e;color:#fff;border-radius:12px 12px 0 0;padding:14px 18px;font-weight:bold;font-size:18px">🔔 নতুন অর্ডার এসেছে</div>
+  <div style="background:#fff;border:1px solid #eadfd8;border-top:0;border-radius:0 0 12px 12px;padding:18px">
+    <p style="margin:0 0 4px"><strong>${esc(order.customerName)}</strong> · ${esc(order.customerPhone)}</p>
+    <p style="margin:0 0 4px">${esc(order.customerAddress)}</p>
+    <p style="margin:0 0 12px;color:#6e5c58">${esc(items)}</p>
+    <p style="margin:0 0 16px;font-size:16px"><strong>${taka(order.totalBdt)}</strong> · ${esc(payment)} · ${esc(order.orderNumber)}</p>
+    <a href="${esc(adminUrl)}" style="display:inline-block;background:#8c0a12;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold">অর্ডার দেখুন</a>
+  </div>
+</div></body></html>`
+  const text = [
+    `নতুন অর্ডার ${order.orderNumber}`,
+    `${order.customerName} · ${order.customerPhone}`,
+    order.customerAddress,
+    items,
+    `${taka(order.totalBdt)} · ${payment}`,
+    adminUrl,
+  ].join("\n")
+  return { subject, html, text }
+}
+
+async function sendOwner(order: OwnerAlertData): Promise<void> {
+  const apiKey = process.env.BREVO_API_KEY
+  const from = process.env.EMAIL_FROM
+  const recipients = (process.env.OWNER_NOTIFY_EMAIL || "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)
+  if (!apiKey || !from || recipients.length === 0) return
+  const siteUrl = process.env.SITE_URL || "https://banglarbiriyani.netlify.app"
+  try {
+    const { subject, html, text } = buildOwnerAlert(order, siteUrl)
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: { "api-key": apiKey, "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        sender: { email: from, name: process.env.EMAIL_FROM_NAME || "Banglar Biriyani" },
+        to: recipients.map((email) => ({ email })),
+        subject,
+        htmlContent: html,
+        textContent: text,
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) console.error(`[email] owner alert Brevo ${res.status} for ${order.orderNumber}:`, await res.text())
+  } catch (err) {
+    console.error(`[email] owner alert failed for ${order.orderNumber}:`, err)
+  }
+}
+
+/** Tells the restaurant about a new order. Never blocks or fails the order. */
+export async function sendOwnerOrderAlert(order: OwnerAlertData): Promise<void> {
+  const job = sendOwner(order)
   const runtime = (globalThis as any).EdgeRuntime
   if (runtime?.waitUntil) {
     runtime.waitUntil(job)

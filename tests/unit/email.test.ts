@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { EMAIL_STATUSES, buildOrderEmail, sendOrderEmail } from "../../server/utils/email"
+import { EMAIL_STATUSES, buildOrderEmail, buildOwnerAlert, sendOrderEmail, sendOwnerOrderAlert } from "../../server/utils/email"
 
 const order = {
   orderNumber: "BB-20261104-1234",
@@ -57,5 +57,31 @@ describe("order emails", () => {
     fetchMock.mockRejectedValueOnce(new Error("network down"))
     await expect(sendOrderEmail("a@example.com", "DELIVERED", order)).resolves.toBeUndefined()
     errSpy.mockRestore()
+  })
+
+  it("builds a short owner alert with the customer's phone", () => {
+    const m = buildOwnerAlert({ ...order, customerPhone: "01711000007" }, "https://example.com/")
+    expect(m.subject).toContain("BB-20261104-1234")
+    expect(m.subject).toContain("৳1,250")
+    expect(m.html).toContain("01711000007")
+    expect(m.html).toContain("Rahim &lt;b&gt;")
+    expect(m.text).toContain("https://example.com/admin")
+  })
+
+  it("sends the owner alert to every OWNER_NOTIFY_EMAIL address, and skips it when unset", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }))
+    vi.stubGlobal("fetch", fetchMock)
+    vi.stubEnv("BREVO_API_KEY", "test-key")
+    vi.stubEnv("EMAIL_FROM", "shop@example.com")
+    const data = { ...order, customerPhone: "01711000007" }
+
+    vi.stubEnv("OWNER_NOTIFY_EMAIL", "")
+    await sendOwnerOrderAlert(data)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    vi.stubEnv("OWNER_NOTIFY_EMAIL", "owner@example.com, cook@example.com")
+    await sendOwnerOrderAlert(data)
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.to.map((t: { email: string }) => t.email)).toEqual(["owner@example.com", "cook@example.com"])
   })
 })

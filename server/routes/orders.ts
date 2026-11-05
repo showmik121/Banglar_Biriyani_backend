@@ -16,7 +16,7 @@ import { orderRateLimiter } from "../middleware/rateLimiter.js"
 import { optionalAuth, requireAuth } from "../middleware/authMiddleware.js"
 import { dhakaNow, isMealOpen, mealForHour, mealWindowsEnabled, windowText, type MealName } from "../utils/mealWindows.js"
 import { samePhone } from "../utils/phone.js"
-import { sendOrderEmail } from "../utils/email.js"
+import { sendOrderEmail, sendOwnerOrderAlert } from "../utils/email.js"
 import { errorDetails } from "../utils/errors.js"
 import { parsePaging } from "../utils/paging.js"
 import { createFailureLimiter, getClientIp } from "../middleware/rateLimiter.js"
@@ -330,6 +330,21 @@ ordersRouter.post(
         })
       } catch (emailErr) {
         console.error("[email] order confirmation skipped:", emailErr)
+      }
+
+      // Alert the restaurant's inbox too, so a new order reaches their phone even when the admin page is closed
+      try {
+        await sendOwnerOrderAlert({
+          orderNumber: result.order.orderNumber,
+          customerName: result.order.customerName,
+          customerPhone: result.order.customerPhone,
+          customerAddress: result.order.customerAddress,
+          totalBdt: result.order.totalBdt,
+          paymentMethod: result.order.paymentMethod,
+          items: result.items.map((i: any) => ({ name: i.itemNameSnapshot, quantity: i.quantity, lineTotalBdt: i.lineTotalBdt })),
+        })
+      } catch (alertErr) {
+        console.error("[email] owner alert skipped:", alertErr)
       }
 
       c.header("Location", `/api/orders/${result.order.orderNumber}`)

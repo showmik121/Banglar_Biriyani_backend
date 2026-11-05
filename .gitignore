@@ -36,3 +36,6 @@ env-ready.txt
 create-env.bat
 scripts/create-env.mjs
 commit-message.txt
+
+push-log.txt
+sync-log.txt
