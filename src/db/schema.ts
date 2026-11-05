@@ -265,6 +265,14 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 })
 
+// Photos uploaded by the owner (base64, already shrunk by the browser); served at /api/images/:id
+export const uploadedImages = pgTable("uploaded_images", {
+  id: serial("id").primaryKey(),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+})
+
 // Record of the one-time steps in src/db/upgrade.ts that already ran
 export const schemaUpgrades = pgTable("schema_upgrades", {
   name: text("name").primaryKey(),

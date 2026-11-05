@@ -8,6 +8,7 @@ import { ordersRouter } from "./routes/orders.js"
 import { authRouter } from "./routes/auth.js"
 import { adminRouter } from "./routes/admin.js"
 import { adminPromotionsRouter, publicPromotionsRouter } from "./routes/promotions.js"
+import { adminImagesRouter, publicImagesRouter } from "./routes/images.js"
 import { adminSettingsRouter, publicSettingsRouter } from "./routes/settings.js"
 import { isAllowedOrigin } from "./utils/cors.js"
 
@@ -72,8 +73,10 @@ app.route("/api/orders", ordersRouter)
 app.route("/api/admin", adminRouter)
 app.route("/api/admin", adminPromotionsRouter)
 app.route("/api/admin", adminSettingsRouter)
+app.route("/api/admin", adminImagesRouter)
 app.route("/api", publicPromotionsRouter)
 app.route("/api", publicSettingsRouter)
+app.route("/api", publicImagesRouter)
 
 // Standardized 404 Handler following api-design standards
 app.notFound((c) => {

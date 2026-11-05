@@ -147,6 +147,31 @@ const steps: { name: string; once?: boolean; run: () => Promise<unknown> }[] = [
       `)
     },
   },
+  {
+    name: "Table for photos uploaded by the owner",
+    run: async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS uploaded_images (
+          id serial PRIMARY KEY,
+          mime text NOT NULL,
+          data text NOT NULL,
+          created_at timestamptz NOT NULL DEFAULT now()
+        )
+      `)
+      await db.execute(sql`ALTER TABLE uploaded_images ENABLE ROW LEVEL SECURITY`)
+      await db.execute(sql`
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            REVOKE ALL ON TABLE uploaded_images FROM anon;
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            REVOKE ALL ON TABLE uploaded_images FROM authenticated;
+          END IF;
+        END $$
+      `)
+    },
+  },
 ]
 
 async function main() {

@@ -51,13 +51,19 @@ export const syncScheduleSchema = z.union([
   z.array(scheduleItemInputSchema).transform((val) => ({ assignments: val })),
 ])
 
+/** A photo: a web link, or one the owner uploaded (/api/images/12) */
+export const imageRef = z
+  .string()
+  .trim()
+  .refine((v) => /^\/api\/images\/\d+$/.test(v) || /^https?:\/\/\S+$/i.test(v), "Valid image URL required")
+
 export const createMenuItemSchema = z.object({
   categoryId: z.number().int().positive().optional(),
   categoryName: z.string().trim().min(2).optional(),
   name: z.string().trim().min(2, "Dish name must be at least 2 characters"),
   description: z.string().trim().min(5, "Description must be at least 5 characters"),
   basePriceBdt: z.number().int().positive("Price must be a positive number in BDT"),
-  imageUrl: z.string().trim().url("Valid image URL required"),
+  imageUrl: imageRef,
   portionSize: z.string().trim().default("1:1 Regular"),
   spiceLevel: z.string().trim().default("Medium"),
   rating: z.string().trim().default("4.9"),
@@ -70,7 +76,7 @@ export const updateMenuItemSchema = z.object({
   name: z.string().trim().min(2).optional(),
   description: z.string().trim().min(5).optional(),
   basePriceBdt: z.number().int().positive().optional(),
-  imageUrl: z.string().trim().url().optional(),
+  imageUrl: imageRef.optional(),
   portionSize: z.string().trim().optional(),
   spiceLevel: z.string().trim().optional(),
   rating: z.string().trim().optional(),
