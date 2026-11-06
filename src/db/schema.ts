@@ -265,6 +265,23 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 })
 
+// Phones / browsers of the owner and staff that get a push when a new order arrives
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_idx").on(table.endpoint),
+    index("push_subscriptions_user_idx").on(table.userId),
+  ],
+)
+
 // Photos uploaded by the owner (base64, already shrunk by the browser); served at /api/images/:id
 export const uploadedImages = pgTable("uploaded_images", {
   id: serial("id").primaryKey(),

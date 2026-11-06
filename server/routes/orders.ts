@@ -18,6 +18,7 @@ import { dhakaNow, isMealOpen, mealForHour, mealWindowsEnabled, windowText, type
 import { getMealWindows } from "../utils/mealSettings.js"
 import { samePhone } from "../utils/phone.js"
 import { sendOrderEmail, sendOwnerOrderAlert } from "../utils/email.js"
+import { pushNewOrder } from "../utils/pushNotify.js"
 import { errorDetails } from "../utils/errors.js"
 import { parsePaging } from "../utils/paging.js"
 import { createFailureLimiter, getClientIp } from "../middleware/rateLimiter.js"
@@ -348,6 +349,13 @@ ordersRouter.post(
         })
       } catch (alertErr) {
         console.error("[email] owner alert skipped:", alertErr)
+      }
+
+      // Push notification to the owner's and staff phones (never blocks or fails the order)
+      try {
+        await pushNewOrder()
+      } catch (pushErr) {
+        console.error("[push] new order push skipped:", pushErr)
       }
 
       c.header("Location", `/api/orders/${result.order.orderNumber}`)

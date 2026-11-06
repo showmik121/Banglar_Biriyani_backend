@@ -172,6 +172,34 @@ const steps: { name: string; once?: boolean; run: () => Promise<unknown> }[] = [
       `)
     },
   },
+  {
+    // Phones of the owner and staff that get a push notification for every new order
+    name: "Table for phone notification subscriptions",
+    run: async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+          id serial PRIMARY KEY,
+          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          endpoint text NOT NULL,
+          created_at timestamptz NOT NULL DEFAULT now()
+        )
+      `)
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint_idx ON push_subscriptions (endpoint)`)
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id)`)
+      await db.execute(sql`ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY`)
+      await db.execute(sql`
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            REVOKE ALL ON TABLE push_subscriptions FROM anon;
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            REVOKE ALL ON TABLE push_subscriptions FROM authenticated;
+          END IF;
+        END $$
+      `)
+    },
+  },
 ]
 
 async function main() {

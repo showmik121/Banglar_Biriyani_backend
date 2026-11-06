@@ -59,6 +59,7 @@ describe("API routes that need no database", () => {
       "/api/admin/orders",
       "/api/admin/offers",
       "/api/admin/delivery-zones",
+      "/api/admin/push/config",
     ]) {
       const res = await app.request(url)
       expect(res.status).toBe(401)
@@ -75,6 +76,9 @@ describe("API routes that need no database", () => {
       ["POST", "/api/admin/delivery-zones"],
       ["PATCH", "/api/admin/menu/1"],
       ["PATCH", "/api/admin/orders/1/status"],
+      ["POST", "/api/admin/push/subscribe"],
+      ["POST", "/api/admin/push/unsubscribe"],
+      ["POST", "/api/admin/push/test"],
     ]
     for (const [method, url] of attempts) {
       const res = await app.request(url, {

@@ -73,6 +73,10 @@ All need sign-in. `ADMIN` can do everything. `STAFF` can read and handle orders 
 | `GET/POST/PATCH/DELETE /api/admin/delivery-zones` | read: ADMIN, STAFF; write: ADMIN | Delivery points. |
 | `GET/PUT /api/admin/meal-hours` | read: ADMIN, STAFF; change: ADMIN | Lunch and dinner order hours (whole hours, 0-24, end after start). |
 | `POST /api/admin/images` | ADMIN | Upload a dish photo `{ dataUrl }` (jpeg/png/webp, about 180 KB at most; the admin page shrinks it first). Returns `{ url: "/api/images/12" }`. |
+| `GET /api/admin/push/config` | ADMIN, STAFF | `{ publicKey }` for phone notifications (`null` until the VAPID keys are set on the server). |
+| `POST /api/admin/push/subscribe` | ADMIN, STAFF | Register this phone `{ endpoint }` (only real push-service addresses are accepted). |
+| `POST /api/admin/push/unsubscribe` | ADMIN, STAFF | Remove this phone `{ endpoint }`. |
+| `POST /api/admin/push/test` | ADMIN, STAFF | Send a test notification to your own phones. Returns `{ sent, failed }`. |
 
 ## Rate limits
 
