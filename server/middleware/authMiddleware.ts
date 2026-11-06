@@ -3,7 +3,8 @@ import { eq, and, gt } from "drizzle-orm"
 import { db, users, sessions, type User, type Session } from "../../src/db/index.js"
 import { extractSessionToken, verifySessionToken } from "../utils/auth.js"
 
-export type SafeUser = Omit<User, "passwordHash">
+// What the rest of the API may see: never the password hash, and the Google id stays internal too
+export type SafeUser = Omit<User, "passwordHash" | "googleSub">
 
 declare module "hono" {
   interface ContextVariableMap {

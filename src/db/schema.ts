@@ -48,8 +48,10 @@ export const users = pgTable(
     id: serial("id").primaryKey(),
     fullName: text("full_name").notNull(),
     email: text("email").unique(), // optional: customers sign up with name, mobile and password
-    phone: text("phone").notNull().unique(),
-    passwordHash: text("password_hash").notNull(),
+    phone: text("phone").unique(), // empty for people who signed in with Google (they give it at checkout)
+    passwordHash: text("password_hash"), // empty for Google sign-ins: they have no password
+    googleSub: text("google_sub"), // Google's permanent id for the person
+    // Note: role stays CUSTOMER for Google sign-ins; staff and admins never use Google
     role: userRoleEnum("role").default("CUSTOMER").notNull(),
     defaultAddress: text("default_address"),
     isActive: boolean("is_active").default(true).notNull(),
@@ -57,7 +59,7 @@ export const users = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   // email and phone are already indexed by their unique constraints
-  (table) => [index("users_role_idx").on(table.role)],
+  (table) => [index("users_role_idx").on(table.role), uniqueIndex("users_google_sub_idx").on(table.googleSub)],
 )
 
 // Sessions Table

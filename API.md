@@ -30,6 +30,8 @@ changing a meaning) must go under a new `/api/v2` and keep the old one running f
 | `GET /api/orders/:orderNumber?phone=` | Track one order. Needs the phone number used for the order, unless signed in as its owner or staff. 20 wrong tries per 15 minutes per address. |
 | `POST /api/auth/signup` | Create a customer account (name, mobile, password; email is optional). 20 per 15 minutes per address. |
 | `POST /api/auth/login` | `{ identifier, password }`. 5 wrong passwords per address and 10 per account in 15 minutes. |
+| `GET /api/auth/config` | `{ googleClientId }` (`null` until `GOOGLE_CLIENT_ID` is set). |
+| `POST /api/auth/google` | `{ credential }`: Google ID token from the browser. Signs in or creates a CUSTOMER account and sets the session cookie. 401 invalid token, 409 email already has a password account, 503 not set up. |
 
 ### Placing an order
 

@@ -115,4 +115,12 @@ How it fits together:
 4. ফোনে অ্যাডমিন পেজ খুলে Orders ট্যাবের "ফোনে নোটিফিকেশন চালু করুন" বাটন চাপুন, তারপর "টেস্ট পাঠান"।
 Firebase লাগে না: Chrome ভেতরে Google-এর FCM দিয়েই পাঠায়। iPhone-এ আগে Safari-র Share → Add to Home Screen করে সেখান থেকে অ্যাডমিন খুলতে হবে (iOS 16.4+)।
 
+**Google দিয়ে সাইন ইন (ঐচ্ছিক):**
+1. console.cloud.google.com → একটা প্রজেক্ট → APIs & Services → OAuth consent screen (External; নাম, ইমেইল দিন; Publish করুন)।
+2. Credentials → Create credentials → OAuth client ID → Application type: **Web application**।
+3. "Authorized JavaScript origins"-এ সাইটের ঠিকানা দিন (যেমন `https://banglarbiriyani.netlify.app`, নিজের ডোমেইন কিনলে সেটাও `https://` সহ)। Redirect URI লাগে না।
+4. যে Client ID পাবেন (শেষে `.apps.googleusercontent.com`) তা `.env`-এ `GOOGLE_CLIENT_ID=` এর পরে বসিয়ে `deploy-supabase.bat` চালান। Client ID গোপন নয়, কিন্তু Client secret এখানে লাগে না।
+5. `update-database.bat` একবার চালান (users টেবিলে google_sub যোগ হয়)।
+নিরাপত্তা: Google অ্যাকাউন্ট আইডি (sub) দিয়ে মেলানো হয়। একই ইমেইলে আগে পাসওয়ার্ড-অ্যাকাউন্ট থাকলে Google দিয়ে ঢোকানো হয় না (পাসওয়ার্ড দিয়ে ঢুকতে বলা হয়)। স্টাফ ও অ্যাডমিন কখনো Google দিয়ে ঢুকতে পারে না।
+
 key কখনো git-এ বা চ্যাটে দেবেন না। secret না থাকলে ইমেইল চুপচাপ বন্ধ থাকে, অর্ডারে কোনো সমস্যা হয় না।

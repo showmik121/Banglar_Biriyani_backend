@@ -38,6 +38,38 @@ describe("API routes that need no database", () => {
     delete process.env.ALLOWED_ORIGINS
   })
 
+  test("the sign-in screen can ask whether Google sign-in is set up", async () => {
+    delete process.env.GOOGLE_CLIENT_ID
+    const off = await app.request("/api/auth/config")
+    expect(off.status).toBe(200)
+    expect(((await off.json()) as any).data.googleClientId).toBeNull()
+
+    process.env.GOOGLE_CLIENT_ID = "123-shop.apps.googleusercontent.com"
+    const on = await app.request("/api/auth/config")
+    expect(((await on.json()) as any).data.googleClientId).toBe("123-shop.apps.googleusercontent.com")
+    delete process.env.GOOGLE_CLIENT_ID
+  })
+
+  test("Google sign-in refuses everything that is not a valid Google token", async () => {
+    const post = (body: unknown) =>
+      app.request("/api/auth/google", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+    delete process.env.GOOGLE_CLIENT_ID
+    expect((await post({ credential: "x.y.z" })).status).toBe(503)
+
+    process.env.GOOGLE_CLIENT_ID = "123-shop.apps.googleusercontent.com"
+    expect((await post({})).status).toBe(422)
+    expect((await post({ credential: 42 })).status).toBe(422)
+    const bad = await post({ credential: "not-a-token" })
+    expect(bad.status).toBe(401)
+    expect(((await bad.json()) as any).error.code).toBe("INVALID_GOOGLE_TOKEN")
+    delete process.env.GOOGLE_CLIENT_ID
+  })
+
   test("unknown endpoints return a JSON 404", async () => {
     const res = await app.request("/api/does-not-exist")
     expect(res.status).toBe(404)

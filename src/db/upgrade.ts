@@ -173,6 +173,16 @@ const steps: { name: string; once?: boolean; run: () => Promise<unknown> }[] = [
     },
   },
   {
+    // "Sign in with Google": such customers have no password and no mobile number yet
+    name: "Google sign-in columns on users",
+    run: async () => {
+      await db.execute(sql`ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`)
+      await db.execute(sql`ALTER TABLE users ALTER COLUMN phone DROP NOT NULL`)
+      await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub text`)
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx ON users (google_sub)`)
+    },
+  },
+  {
     // Phones of the owner and staff that get a push notification for every new order
     name: "Table for phone notification subscriptions",
     run: async () => {

@@ -15,6 +15,7 @@ import { signupSchema, loginSchema, updateProfileSchema } from "../validators/au
 import { requireAuth, type SafeUser } from "../middleware/authMiddleware.js"
 import { getClientIp, createFailureLimiter, createRequestLimiter } from "../middleware/rateLimiter.js"
 import { errorDetails } from "../utils/errors.js"
+import { verifyGoogleIdToken } from "../utils/googleAuth.js"
 
 export const authRouter = new Hono()
 
@@ -305,7 +306,10 @@ authRouter.post("/login", async (c) => {
 
     // Verify password hash first, so a deactivated account is only revealed to someone
     // who knows its password (otherwise anyone could probe which accounts exist and are off).
-    const isPasswordValid = await verifyPassword(password, user.passwordHash)
+    // People who signed in with Google have no password: they cost the same time and just fail here
+    const isPasswordValid = user.passwordHash
+      ? await verifyPassword(password, user.passwordHash)
+      : (await verifyPassword(password, await getDummyHash()), false)
     if (!isPasswordValid) {
       ipFailures.recordFailure(ip)
       accountFailures.recordFailure(accountKey)
@@ -387,6 +391,146 @@ authRouter.post("/login", async (c) => {
         error: {
           code: "LOGIN_FAILED",
           message: "Failed to authenticate",
+          details: errorDetails(error),
+        },
+      },
+      500,
+    )
+  }
+})
+
+/**
+ * GET /api/auth/config
+ * Public settings the sign-in screen needs. googleClientId is null until it is set on the server,
+ * and the "Sign in with Google" button stays hidden until then. (The client id is public by design.)
+ */
+authRouter.get("/config", (c) => {
+  c.header("Cache-Control", "no-store")
+  return c.json({ data: { googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() || null } })
+})
+
+/**
+ * POST /api/auth/google { credential }
+ * Sign in or sign up with a Google account. The credential is the ID token the browser got
+ * from Google; it is verified here, never trusted as sent.
+ *
+ * Safety rules:
+ *  - Accounts are matched by Google's permanent id, never silently by email. If the email already
+ *    belongs to a password account, the visitor is told to use their password. That stops someone
+ *    who registered with another person's (unverified) email from receiving that person's Google login.
+ *  - Staff and admin accounts can never be reached this way.
+ */
+const googleLimiter = createRequestLimiter(
+  30,
+  15 * 60 * 1000,
+  "Too many sign-in attempts. Please wait a few minutes and try again.",
+)
+authRouter.post("/google", googleLimiter, async (c) => {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim()
+  if (!clientId) {
+    return c.json(
+      { error: { code: "GOOGLE_NOT_SET_UP", message: "Sign in with Google is not available yet.", details: null } },
+      503,
+    )
+  }
+  const body = (await c.req.json().catch(() => null)) as { credential?: unknown } | null
+  if (typeof body?.credential !== "string" || body.credential.length === 0) {
+    return c.json({ error: { code: "VALIDATION_ERROR", message: "Missing Google credential", details: null } }, 422)
+  }
+
+  const profile = await verifyGoogleIdToken(body.credential, clientId)
+  if (!profile) {
+    return c.json(
+      {
+        error: {
+          code: "INVALID_GOOGLE_TOKEN",
+          message: "Google sign-in could not be verified. Please try again.",
+          details: null,
+        },
+      },
+      401,
+    )
+  }
+
+  try {
+    let [user] = await db.select().from(users).where(eq(users.googleSub, profile.sub)).limit(1)
+    let isNew = false
+
+    if (!user) {
+      const [sameEmail] = await db.select({ id: users.id }).from(users).where(emailEquals(profile.email)).limit(1)
+      if (sameEmail) {
+        return c.json(
+          {
+            error: {
+              code: "CONFLICT",
+              message: "An account with this email already exists. Please sign in with your password instead.",
+              details: null,
+            },
+          },
+          409,
+        )
+      }
+      ;[user] = await db
+        .insert(users)
+        .values({
+          fullName: profile.name || profile.email.split("@")[0],
+          email: profile.email,
+          phone: null,
+          passwordHash: null,
+          googleSub: profile.sub,
+          role: "CUSTOMER",
+          isActive: true,
+        })
+        .returning()
+      isNew = true
+    }
+
+    if (user.role !== "CUSTOMER") {
+      return c.json(
+        { error: { code: "FORBIDDEN", message: "Google sign-in is only for customer accounts.", details: null } },
+        403,
+      )
+    }
+    if (!user.isActive) {
+      return c.json(
+        {
+          error: {
+            code: "ACCOUNT_DISABLED",
+            message: "This account has been deactivated. Please contact support.",
+            details: null,
+          },
+        },
+        403,
+      )
+    }
+
+    const sessionId = crypto.randomUUID()
+    const ipAddress = getClientIp(c)
+    const userAgent = c.req.header("user-agent") || null
+    await db.insert(sessions).values({
+      id: sessionId,
+      userId: user.id,
+      userAgent,
+      ipAddress,
+      expiresAt: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000),
+    })
+    setSessionCookie(c, await signSessionToken({ sub: user.id, role: user.role, jti: sessionId }))
+    await db.insert(auditLogs).values({
+      actorId: user.id,
+      action: isNew ? "USER_SIGNUP" : "USER_LOGIN",
+      entityType: "USER",
+      entityId: String(user.id),
+      metadataJson: JSON.stringify({ method: "google", ipAddress }),
+    })
+
+    return c.json({ data: { user: toSafeUser(user), isNew } }, isNew ? 201 : 200)
+  } catch (error) {
+    console.error("Google sign-in error:", error)
+    return c.json(
+      {
+        error: {
+          code: "GOOGLE_LOGIN_FAILED",
+          message: "Could not sign you in with Google. Please try again.",
           details: errorDetails(error),
         },
       },
