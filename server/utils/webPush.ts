@@ -40,13 +40,13 @@ export function isPushEndpoint(value: unknown): value is string {
   return PUSH_HOSTS.some((h) => (h.startsWith(".") ? host.endsWith(h) : host === h))
 }
 
-const b64url = (bytes: Uint8Array | ArrayBuffer): string => {
+export const b64url = (bytes: Uint8Array | ArrayBuffer): string => {
   const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
   let s = ""
   for (const b of arr) s += String.fromCharCode(b)
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
-const fromB64url = (text: string): Uint8Array => {
+export const fromB64url = (text: string): Uint8Array => {
   const padded = text.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (text.length % 4)) % 4)
   return Uint8Array.from(atob(padded), (ch) => ch.charCodeAt(0))
 }
@@ -113,17 +113,106 @@ export async function createVapidAuthorization(
   return `vapid t=${unsigned}.${b64url(signature)}, k=${keys.publicKey}`
 }
 
-/** Sends one empty push ("ping") to one phone/browser. */
-export async function sendPushPing(endpoint: string, keys: VapidKeys | null = getVapidKeys()): Promise<PushResult> {
+type CryptoKeyObject = Awaited<ReturnType<typeof crypto.subtle.importKey>>
+export interface EcKeyPair {
+  publicKey: CryptoKeyObject
+  privateKey: CryptoKeyObject
+}
+type RequestBody = NonNullable<NonNullable<Parameters<typeof fetch>[1]>["body"]>
+
+export interface PushTarget {
+  endpoint: string
+  /** The phone's public key and secret from its subscription (needed to encrypt a message for it) */
+  p256dh?: string
+  auth?: string
+}
+
+const concat = (...parts: Uint8Array[]): Uint8Array => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let at = 0
+  for (const p of parts) {
+    out.set(p, at)
+    at += p.length
+  }
+  return out
+}
+
+async function hkdf(salt: Uint8Array, secret: Uint8Array, info: Uint8Array, bytes: number): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveBits"])
+  const bits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt: salt, info: info },
+    key,
+    bytes * 8,
+  )
+  return new Uint8Array(bits)
+}
+
+/**
+ * Encrypts a message so only one phone can read it (RFC 8291, "aes128gcm"). The push service
+ * in between (Google, Mozilla, Apple) only ever sees scrambled bytes. salt and the one-time
+ * key pair are random; tests pass fixed ones.
+ */
+export async function encryptPushPayload(
+  message: string,
+  p256dh: string,
+  auth: string,
+  fixed?: { salt?: Uint8Array; keyPair?: EcKeyPair },
+): Promise<Uint8Array> {
+  const uaPublic = fromB64url(p256dh)
+  const authSecret = fromB64url(auth)
+  if (uaPublic.length !== 65 || uaPublic[0] !== 4 || authSecret.length !== 16) {
+    throw new Error("Invalid push subscription keys")
+  }
+  const keyPair =
+    fixed?.keyPair ?? ((await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"])) as unknown as EcKeyPair)
+  const asPublic = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey))
+  const uaKey = await crypto.subtle.importKey("raw", uaPublic, { name: "ECDH", namedCurve: "P-256" }, false, [])
+  const ecdh = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, keyPair.privateKey, 256))
+
+  const enc = new TextEncoder()
+  const salt = fixed?.salt ?? crypto.getRandomValues(new Uint8Array(16))
+  const ikm = await hkdf(authSecret, ecdh, concat(enc.encode("WebPush: info\0"), uaPublic, asPublic), 32)
+  const cek = await hkdf(salt, ikm, enc.encode("Content-Encoding: aes128gcm\0"), 16)
+  const nonce = await hkdf(salt, ikm, enc.encode("Content-Encoding: nonce\0"), 12)
+
+  // One record: the message, then 0x02 marking it as the last record
+  const record = concat(enc.encode(message), new Uint8Array([2]))
+  if (record.length > 4096 - 17) throw new Error("Push message is too long")
+  const aes = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"])
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aes, record))
+
+  const header = concat(salt, new Uint8Array([0, 0, 16, 0]), new Uint8Array([asPublic.length]), asPublic)
+  return concat(header, cipher)
+}
+
+/**
+ * Sends one push to one phone/browser. With a message (and the phone's keys) the message is
+ * encrypted and shown by the service worker; without one it is an empty "ping".
+ */
+export async function sendPush(
+  target: PushTarget,
+  message: string | null = null,
+  keys: VapidKeys | null = getVapidKeys(),
+): Promise<PushResult> {
+  const { endpoint } = target
   if (!keys || !isPushEndpoint(endpoint)) return "skipped"
   try {
+    const headers: Record<string, string> = {
+      Authorization: await createVapidAuthorization(endpoint, keys),
+      TTL: "14400", // if the phone is off, still deliver it within 4 hours
+      Urgency: "high",
+    }
+    let body: Uint8Array | undefined
+    if (message !== null) {
+      if (!target.p256dh || !target.auth) return "skipped"
+      body = await encryptPushPayload(message, target.p256dh, target.auth)
+      headers["Content-Encoding"] = "aes128gcm"
+      headers["Content-Type"] = "application/octet-stream"
+    }
     const res = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        Authorization: await createVapidAuthorization(endpoint, keys),
-        TTL: "14400", // if the phone is off, still deliver it within 4 hours
-        Urgency: "high",
-      },
+      headers,
+      body: body as unknown as RequestBody,
       signal: AbortSignal.timeout(8000),
     })
     if (res.ok) return "ok"
@@ -135,4 +224,9 @@ export async function sendPushPing(endpoint: string, keys: VapidKeys | null = ge
     console.error("[push] send failed:", err instanceof Error ? err.message : err)
     return "error"
   }
+}
+
+/** Sends one empty push ("ping") to one phone/browser. */
+export function sendPushPing(endpoint: string, keys: VapidKeys | null = getVapidKeys()): Promise<PushResult> {
+  return sendPush({ endpoint }, null, keys)
 }

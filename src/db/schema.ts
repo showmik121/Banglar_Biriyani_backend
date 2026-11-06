@@ -386,3 +386,23 @@ export type NewOrderItem = typeof orderItems.$inferInsert
 
 export type Offer = typeof offers.$inferSelect
 export type DeliveryZone = typeof deliveryZones.$inferSelect
+
+// Customers' phones/browsers that get a push when the status of one of their orders changes
+export const orderPushSubscriptions = pgTable(
+  "order_push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    lang: text("lang").notNull().default("bn"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("order_push_order_endpoint_idx").on(table.orderId, table.endpoint),
+    index("order_push_endpoint_idx").on(table.endpoint),
+  ],
+)

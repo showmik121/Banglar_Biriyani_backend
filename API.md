@@ -79,6 +79,9 @@ All need sign-in. `ADMIN` can do everything. `STAFF` can read and handle orders 
 | `POST /api/admin/push/subscribe` | ADMIN, STAFF | Register this phone `{ endpoint }` (only real push-service addresses are accepted). |
 | `POST /api/admin/push/unsubscribe` | ADMIN, STAFF | Remove this phone `{ endpoint }`. |
 | `POST /api/admin/push/test` | ADMIN, STAFF | Send a test notification to your own phones. Returns `{ sent, failed }`. |
+| `GET /api/order-push/config` | public | `{ publicKey }` for customer order notifications (`null` until the VAPID keys are set). |
+| `POST /api/order-push/subscribe` | owner, or order number + phone | `{ endpoint, keys: { p256dh, auth }, lang, orders: [{ orderNumber, phone? }] }`. The customer's phone gets a push (Bangla or English) each time an admin changes one of these orders' status. Orders that are not theirs are skipped. Finished orders are dropped automatically. |
+| `POST /api/order-push/unsubscribe` | public | `{ endpoint }`: stop all order notifications for this phone. |
 
 ## Rate limits
 

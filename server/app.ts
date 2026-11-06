@@ -5,6 +5,7 @@ import { logger } from "hono/logger"
 import { secureHeaders } from "hono/secure-headers"
 import { menuRouter } from "./routes/menu.js"
 import { ordersRouter } from "./routes/orders.js"
+import { orderPushRouter } from "./routes/orderPush.js"
 import { authRouter } from "./routes/auth.js"
 import { adminRouter } from "./routes/admin.js"
 import { adminPromotionsRouter, publicPromotionsRouter } from "./routes/promotions.js"
@@ -71,6 +72,7 @@ app.get("/api/health", (c) => {
 app.route("/api/auth", authRouter)
 app.route("/api/menu", menuRouter)
 app.route("/api/orders", ordersRouter)
+app.route("/api/order-push", orderPushRouter)
 app.route("/api/admin", adminRouter)
 app.route("/api/admin", adminPromotionsRouter)
 app.route("/api/admin", adminSettingsRouter)

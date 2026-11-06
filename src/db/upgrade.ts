@@ -210,6 +210,37 @@ const steps: { name: string; once?: boolean; run: () => Promise<unknown> }[] = [
       `)
     },
   },
+  {
+    // Customers' phones that get a push when the status of their order changes
+    name: "Table for customer order notification subscriptions",
+    run: async () => {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS order_push_subscriptions (
+          id serial PRIMARY KEY,
+          order_id integer NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+          endpoint text NOT NULL,
+          p256dh text NOT NULL,
+          auth text NOT NULL,
+          lang text NOT NULL DEFAULT 'bn',
+          created_at timestamptz NOT NULL DEFAULT now()
+        )
+      `)
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS order_push_order_endpoint_idx ON order_push_subscriptions (order_id, endpoint)`)
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS order_push_endpoint_idx ON order_push_subscriptions (endpoint)`)
+      await db.execute(sql`ALTER TABLE order_push_subscriptions ENABLE ROW LEVEL SECURITY`)
+      await db.execute(sql`
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            REVOKE ALL ON TABLE order_push_subscriptions FROM anon;
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            REVOKE ALL ON TABLE order_push_subscriptions FROM authenticated;
+          END IF;
+        END $$
+      `)
+    },
+  },
 ]
 
 async function main() {

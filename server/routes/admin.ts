@@ -14,6 +14,7 @@ import {
   type dayOfWeekEnum,
 } from "../../src/db/index.js"
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js"
+import { pushOrderStatus } from "../utils/orderPush.js"
 import { EMAIL_STATUSES, sendOrderEmail, type OrderEmailKind } from "../utils/email.js"
 import { MAX_ITEMS_PER_MEAL } from "../validators/adminSchema.js"
 import {
@@ -964,6 +965,15 @@ adminRouter.patch("/orders/:id/status", requireRole(["ADMIN", "STAFF"]), async (
         })
       } catch (emailErr) {
         console.error("[email] status email skipped:", emailErr)
+      }
+    }
+
+    // Tell the customer's phone (if they asked for notifications) when the status really changed
+    if (existingOrder.status !== data.status) {
+      try {
+        await pushOrderStatus(updatedOrder.id, updatedOrder.orderNumber, data.status)
+      } catch (pushErr) {
+        console.error("[push] customer notification skipped:", pushErr)
       }
     }
 
